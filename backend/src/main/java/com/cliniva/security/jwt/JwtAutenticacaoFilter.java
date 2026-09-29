@@ -21,7 +21,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtAutenticacaoFilter extends OncePerRequestFilter {
@@ -43,6 +45,10 @@ public class JwtAutenticacaoFilter extends OncePerRequestFilter {
                     autenticar(usuario.get(), token);
                 }
             } catch (RuntimeException ex) {
+                // Token inválido é esperado (expirado, assinatura diferente),
+                // então não polui o log com stack trace. Erros inesperados
+                // ficam em debug para diagnóstico.
+                log.debug("Token recusado na autenticação: {}", ex.getMessage());
                 SecurityContextHolder.clearContext();
             }
         }

@@ -1,6 +1,8 @@
 package com.cliniva.atendimento;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +53,7 @@ public class AtendimentoService {
         private final ServicoRepository servicoRepository;
         private final ItemRepository itemRepository;
         private final AgendaService agendaService;
+        private final Clock clock;
 
         @Transactional
         public CreateAtendimentoResponseDTO createAtendimento(Clinica clinica,
@@ -88,6 +91,9 @@ public class AtendimentoService {
                 atendimento.setDataAtendimento(requestDTO.dataAtendimento());
                 atendimento.setDuracaoMinutos(duracaoTotal);
                 atendimento.setStatus(StatusAtendimento.AGENDADO);
+                // Pelo Clock da aplicação, e não pelo fuso do container: entre
+                // 21h e 24h no Brasil o UTC já é o dia seguinte.
+                atendimento.setDataCriacao(LocalDate.now(clock));
                 atendimentoRepository.save(atendimento);
 
                 List<ServicoRealizadoDTO> servicosRealizados = new ArrayList<>();

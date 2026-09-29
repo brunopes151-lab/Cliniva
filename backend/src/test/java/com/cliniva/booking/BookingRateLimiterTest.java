@@ -43,10 +43,10 @@ class BookingRateLimiterTest {
         BookingRateLimiter limiter = new BookingRateLimiter(new RelogioMutavel());
 
         for (int i = 1; i <= 5; i++) {
-            limiter.registrar("clinica-a|5511999999999|1.1.1.1");
+            limiter.registrar("clinica-a|1.1.1.1");
         }
 
-        assertThatThrownBy(() -> limiter.registrar("clinica-a|5511999999999|1.1.1.1"))
+        assertThatThrownBy(() -> limiter.registrar("clinica-a|1.1.1.1"))
                 .isInstanceOf(RateLimitExcedidoException.class)
                 .hasMessageContaining("Muitas tentativas");
     }
@@ -56,11 +56,11 @@ class BookingRateLimiterTest {
         BookingRateLimiter limiter = new BookingRateLimiter(new RelogioMutavel());
 
         for (int i = 1; i <= 5; i++) {
-            limiter.registrar("clinica-a|5511999999999|1.1.1.1");
+            limiter.registrar("clinica-a|1.1.1.1");
         }
 
-        // outro telefone/IP continua passando
-        limiter.registrar("clinica-a|5511888888888|2.2.2.2");
+        // outra origem continua passando
+        limiter.registrar("clinica-b|2.2.2.2");
     }
 
     @Test
@@ -69,14 +69,33 @@ class BookingRateLimiterTest {
         BookingRateLimiter limiter = new BookingRateLimiter(relogio);
 
         for (int i = 1; i <= 5; i++) {
-            limiter.registrar("clinica-a|5511999999999|1.1.1.1");
+            limiter.registrar("clinica-a|1.1.1.1");
         }
-        assertThatThrownBy(() -> limiter.registrar("clinica-a|5511999999999|1.1.1.1"))
+        assertThatThrownBy(() -> limiter.registrar("clinica-a|1.1.1.1"))
                 .isInstanceOf(RateLimitExcedidoException.class);
 
         relogio.avancar(Duration.ofMinutes(11));
 
         // janela nova: volta a permitir
-        limiter.registrar("clinica-a|5511999999999|1.1.1.1");
+        limiter.registrar("clinica-a|1.1.1.1");
+    }
+
+    @Test
+    void deveDescartarJanelasExpiradasParaNaoCrescerSemLimite() {
+        RelogioMutavel relogio = new RelogioMutavel();
+        BookingRateLimiter limiter = new BookingRateLimiter(relogio);
+
+        limiter.registrar("clinica-a|1.1.1.1");
+
+        // Avança bem além da janela e chega exatamente no registro que dispara
+        // a poda (a cada 200). Sem ela o mapa guardaria 200 entradas para
+        // sempre, uma por IP já visto.
+        relogio.avancar(Duration.ofHours(2));
+        for (int i = 1; i < 200; i++) {
+            limiter.registrar("clinica-a|10.0.0." + i);
+        }
+
+        // 200 entradas foram criadas, mas a antiga expirou e saiu na poda.
+        assertThat(limiter.tamanho()).isEqualTo(199);
     }
 }
