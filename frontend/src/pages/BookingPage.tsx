@@ -7,7 +7,7 @@ import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { Spinner } from '@/components/ui/Spinner'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
-import type { BookingResult, ServicoPublico } from '@/types'
+import type { BookingResult, DisponibilidadeDia, ServicoPublico } from '@/types'
 import { formatDataHora, formatDataLonga, formatMoeda } from '@/utils/format'
 
 const diasDisponiveis = 30
@@ -54,16 +54,30 @@ export function BookingPage() {
   const [sucesso, setSucesso] = useState<BookingResult | null>(null)
 
   const dispPronto = Boolean(servicoId)
-  const { data: disponibilidade, loading: loadingDisp, error: dispErro } = useApi(
+  const { data: disponibilidade, loading: loadingDisp, error: dispErro } = useApi<DisponibilidadeDia | null>(
     () =>
       dispPronto
         ? bookingApi.disponibilidade(slug, data, servicoId)
-        : Promise.resolve(null as never),
+        : Promise.resolve(null),
     [slug, data, servicoId],
   )
 
   const clinicaNome = servicos?.[0]?.clinica ?? 'Clíniva'
   const servicoEscolhido = servicos?.find((s) => s.id === servicoId)
+
+  // "Fazer novo agendamento" precisa zerar o formulário inteiro: manter o
+  // horário anterior fazia o usuário reenviar o mesmo slot (409) ou criar
+  // um segundo atendimento sem perceber.
+  const reiniciar = () => {
+    setSucesso(null)
+    setServicoId('')
+    setData(hojeISO())
+    setHorarioSelecionado('')
+    setNome('')
+    setTelefone('')
+    setEmail('')
+    setFormErro('')
+  }
 
   const confirmar = async () => {
     if (!servicoId) {
@@ -130,7 +144,7 @@ export function BookingPage() {
               </div>
             </div>
             <div className="mt-8">
-              <Button variant="secondary" onClick={() => setSucesso(null)}>
+              <Button variant="secondary" onClick={reiniciar}>
                 Fazer novo agendamento
               </Button>
             </div>
@@ -166,7 +180,7 @@ export function BookingPage() {
 
         {loading ? (
           <Spinner />
-        ) : !servicos || servicos.length === 0 ? (
+        ) : error ? null : !servicos || servicos.length === 0 ? (
           <EmptyState message="A clínica não possui serviços disponíveis para agendamento online no momento." />
         ) : (
           <div className="flex flex-col gap-8">

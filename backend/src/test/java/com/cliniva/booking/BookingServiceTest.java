@@ -3,15 +3,12 @@ package com.cliniva.booking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,7 +31,6 @@ import com.cliniva.booking.dtos.BookingRequestDTO;
 import com.cliniva.cliente.Cliente;
 import com.cliniva.cliente.ClienteRepository;
 import com.cliniva.cliente.enums.OrigemCliente;
-import com.cliniva.exception.HorarioIndisponivelException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
@@ -80,41 +76,56 @@ class BookingServiceTest {
         return servico;
     }
 
-    private BookingRequestDTO requisicao(LocalDateTime dataHora) {
-        return new BookingRequestDTO(UUID.randomUUID(), dataHora, "Maria Silva", "11999999999", "maria@email.com");
+    private BookingRequestDTO requisicao(LocalDate data) {
+        return new BookingRequestDTO(UUID.randomUUID(),
+                data.atTime(10, 0), "Maria Silva", "(11) 99999-9999", "maria@email.com");
     }
 
-    private CreateAtendimentoResponseDTO respostaCriada(UUID id, LocalDateTime dataHora) {
-        return new CreateAtendimentoResponseDTO(id, UUID.randomUUID(), dataHora,
+    private CreateAtendimentoResponseDTO respostaCriada(UUID id, LocalDate data) {
+        return new CreateAtendimentoResponseDTO(id, UUID.randomUUID(), data.atTime(10, 0),
                 LocalDate.now(), 45, StatusAtendimento.AGENDADO, List.<ServicoRealizadoDTO>of());
     }
 
     @Test
     void naoDeveAgendarParaClinicaInexistente() {
-        when(clinicaRepository.findBySlug(SLUG)).thenReturn(Optional.empty());
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> bookingService.agendar(SLUG, requisicao(LocalDateTime.now().plusDays(1))))
+        assertThatThrownBy(() -> bookingService.agendar(SLUG, requisicao(LocalDate.now().plusDays(1))))
                 .isInstanceOf(RecursoNaoEncontradoException.class);
     }
 
     @Test
-    void deveCriarClienteNovoComOrigemOnline() {
-        Servico servico = servico();
-        LocalDateTime dataHora = LocalDateTime.of(2026, 10, 5, 10, 0);
+    void naoDeveAgendarParaClinicaInativa() {
+        Clinica inativa = clinica();
+        inativa.setAtiva(false);
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.empty());
 
-        when(clinicaRepository.findBySlug(SLUG)).thenReturn(Optional.of(CLINICA));
+        assertThatThrownBy(() -> bookingService.agendar(SLUG, requisicao(LocalDate.now().plusDays(1))))
+                .isInstanceOf(RecursoNaoEncontradoException.class)
+                .hasMessageContaining("Clínica não encontrada");
+    }
+
+    @Test
+    void deveCriarClienteNovoComOrigemOnlineETelefoneNormalizado() {
+        Servico servico = servico();
+        LocalDate data = LocalDate.now().plusDays(1);
+
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
         when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
-        when(clienteRepository.findByTelefoneAndClinica("11999999999", CLINICA)).thenReturn(Optional.empty());
+        when(clienteRepository.findByTelefoneAndClinica("5511999999999", CLINICA))
+                .thenReturn(Optional.empty());
         when(clienteRepository.save(any(Cliente.class))).thenAnswer(i -> i.getArgument(0));
         when(atendimentoService.createAtendimento(any(), any(CreateAtendimentoRequestDTO.class)))
-                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), dataHora));
+                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
 
-        var resposta = bookingService.agendar(SLUG, requisicao(dataHora));
+        var resposta = bookingService.agendar(SLUG, requisicao(data));
 
         ArgumentCaptor<Cliente> captor = ArgumentCaptor.forClass(Cliente.class);
         verify(clienteRepository).save(captor.capture());
         assertThat(captor.getValue().getOrigem()).isEqualTo(OrigemCliente.ONLINE);
         assertThat(captor.getValue().getNome()).isEqualTo("Maria Silva");
+        assertThat(captor.getValue().getTelefone()).isEqualTo("5511999999999");
+        assertThat(captor.getValue().getEmail()).isEqualTo("maria@email.com");
 
         assertThat(resposta.cliente()).isEqualTo("Maria Silva");
         assertThat(resposta.servico()).isEqualTo("Limpeza de Pele");
@@ -122,55 +133,70 @@ class BookingServiceTest {
     }
 
     @Test
+    void deveConverterEmailEmBrancoParaNulo() {
+        Servico servico = servico();
+        LocalDate data = LocalDate.now().plusDays(1);
+
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(clienteRepository.findByTelefoneAndClinica(any(), any())).thenReturn(Optional.empty());
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(i -> i.getArgument(0));
+        when(atendimentoService.createAtendimento(any(), any(CreateAtendimentoRequestDTO.class)))
+                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
+
+        bookingService.agendar(SLUG, new BookingRequestDTO(servico.getId(), data.atTime(10, 0),
+                "Maria Silva", "11999999999", "   "));
+
+        ArgumentCaptor<Cliente> captor = ArgumentCaptor.forClass(Cliente.class);
+        verify(clienteRepository).save(captor.capture());
+        assertThat(captor.getValue().getEmail()).isNull();
+    }
+
+    @Test
     void deveReutilizarClienteJaCadastrado() {
         Servico servico = servico();
-        LocalDateTime dataHora = LocalDateTime.of(2026, 10, 5, 10, 0);
+        LocalDate data = LocalDate.now().plusDays(1);
         Cliente cliente = new Cliente();
         ReflectionTestUtils.setField(cliente, "id", UUID.randomUUID());
         cliente.setNome("Maria Silva");
 
-        when(clinicaRepository.findBySlug(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
         when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
-        when(clienteRepository.findByTelefoneAndClinica("11999999999", CLINICA))
+        when(clienteRepository.findByTelefoneAndClinica("5511999999999", CLINICA))
                 .thenReturn(Optional.of(cliente));
         when(atendimentoService.createAtendimento(any(), any(CreateAtendimentoRequestDTO.class)))
-                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), dataHora));
+                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
 
-        bookingService.agendar(SLUG, requisicao(dataHora));
+        bookingService.agendar(SLUG, requisicao(data));
 
         verify(clienteRepository, never()).save(any(Cliente.class));
     }
 
     @Test
-    void naoDeveAgendarForaDaJanelaDeTrintaDias() {
-        when(clinicaRepository.findBySlug(SLUG)).thenReturn(Optional.of(CLINICA));
-        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico()));
+    void deveDelegarValidaaoDeAgendaParaCreateAtendimento() {
+        Servico servico = servico();
+        LocalDate data = LocalDate.now().plusDays(1);
+        Cliente cliente = new Cliente();
+        ReflectionTestUtils.setField(cliente, "id", UUID.randomUUID());
+        cliente.setNome("Maria Silva");
 
-        assertThatThrownBy(() -> bookingService.agendar(SLUG,
-                requisicao(LocalDateTime.now().plusDays(40))))
-                .isInstanceOf(HorarioIndisponivelException.class);
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(clienteRepository.findByTelefoneAndClinica(any(), any())).thenReturn(Optional.of(cliente));
+        when(atendimentoService.createAtendimento(any(), any(CreateAtendimentoRequestDTO.class)))
+                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
 
-        verify(atendimentoService, never()).createAtendimento(any(), any());
-    }
+        bookingService.agendar(SLUG, requisicao(data));
 
-    @Test
-    void deveRepassarIndisponibilidadeDaAgenda() {
-        when(clinicaRepository.findBySlug(SLUG)).thenReturn(Optional.of(CLINICA));
-        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico()));
-        doThrow(new HorarioIndisponivelException("Horário já ocupado")).when(agendaService)
-                .validarDisponibilidade(any(), any(), anyInt(), any());
-
-        assertThatThrownBy(() -> bookingService.agendar(SLUG,
-                requisicao(LocalDateTime.of(2026, 10, 5, 10, 0))))
-                .isInstanceOf(HorarioIndisponivelException.class)
-                .hasMessageContaining("ocupado");
-
-        verify(atendimentoService, never()).createAtendimento(any(), any());
+        // A validação (janela, expediente, lock e conflito) acontece dentro de
+        // createAtendimento — não pode haver check fora do lock.
+        verify(agendaService, never()).validarDisponibilidade(any(), any(), any(Integer.class), any());
+        verify(atendimentoService).createAtendimento(any(), any(CreateAtendimentoRequestDTO.class));
     }
 
     @Test
     void deveListarServicosDaClinica() {
-        when(clinicaRepository.findBySlug(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
         when(servicoRepository.findByClinica(CLINICA)).thenReturn(List.of(servico()));
 
         var servicos = bookingService.listarServicos(SLUG);
@@ -178,5 +204,11 @@ class BookingServiceTest {
         assertThat(servicos).hasSize(1);
         assertThat(servicos.get(0).clinica()).isEqualTo("Clínica A");
         assertThat(servicos.get(0).duracaoMinutos()).isEqualTo(45);
+    }
+
+    @Test
+    void telefoneNormalizadoDeveAdicionarDdi() {
+        assertThat(BookingService.telefoneNormalizado("(11) 99999-9999")).isEqualTo("5511999999999");
+        assertThat(BookingService.telefoneNormalizado("5511999999999")).isEqualTo("5511999999999");
     }
 }

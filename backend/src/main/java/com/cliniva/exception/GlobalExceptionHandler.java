@@ -1,7 +1,6 @@
 package com.cliniva.exception;
 
-import java.util.List;
-
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -9,6 +8,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import com.cliniva.booking.RateLimitExcedidoException;
+
+import jakarta.validation.ConstraintViolationException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -19,9 +22,9 @@ public class GlobalExceptionHandler {
         return new ErrorResponse(HttpStatus.NOT_FOUND.value(), ex.getMessage());
     }
 
-    @ExceptionHandler(LimiteDeGeracoesExcedidoException.class)
+    @ExceptionHandler({ LimiteDeGeracoesExcedidoException.class, RateLimitExcedidoException.class })
     @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
-    public ErrorResponse handleLimiteDeGeracoes(LimiteDeGeracoesExcedidoException ex) {
+    public ErrorResponse handleLimiteDeGeracoes(RuntimeException ex) {
         return new ErrorResponse(HttpStatus.TOO_MANY_REQUESTS.value(), ex.getMessage());
     }
 
@@ -53,8 +56,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse handleValidacao(MethodArgumentNotValidException ex) {
-        List<String> erros = ex.getBindingResult().getFieldErrors().stream()
+        var erros = ex.getBindingResult().getFieldErrors().stream()
                 .map(erro -> erro.getField() + ": " + erro.getDefaultMessage())
+                .toList();
+        return new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "Requisição inválida", erros);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleConstraintViolation(ConstraintViolationException ex) {
+        var erros = ex.getConstraintViolations().stream()
+                .map(violacao -> violacao.getPropertyPath() + ": " + violacao.getMessage())
                 .toList();
         return new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "Requisição inválida", erros);
     }
@@ -70,5 +82,16 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse handleCorpoIlegivel(HttpMessageNotReadableException ex) {
         return new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "Corpo da requisição malformado ou ilegível");
+    }
+
+    /**
+     * Violação de unicidade/CHECK no banco (e-mail duplicado, estoque negativo,
+     * sobreposição de agenda) vira 409 com mensagem útil em vez de 500.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleIntegridade(DataIntegrityViolationException ex) {
+        return new ErrorResponse(HttpStatus.CONFLICT.value(),
+                "Não foi possível concluir: já existe um registro conflitante ou um valor ficou inválido.");
     }
 }

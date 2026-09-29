@@ -42,7 +42,7 @@ public class ResumoAgregador {
         LocalDateTime fimDia = hoje.atTime(LocalTime.MAX);
 
         long naoCanceladosHoje = atendimentoRepository
-                .findByClinicaAndDataAtendimentoBetween(clinica, inicioDia, fimDia).stream()
+                .findPorIntervalo(clinica, inicioDia, hoje.plusDays(1).atStartOfDay()).stream()
                 .filter(atendimento -> atendimento.getStatus() != StatusAtendimento.CANCELADO)
                 .count();
 
@@ -75,7 +75,6 @@ public class ResumoAgregador {
 
     private int[] calcularNovosERecorrentes(Clinica clinica, LocalDate hoje, ZoneId zona) {
         LocalDateTime inicioMes = hoje.withDayOfMonth(1).atStartOfDay(zona).toLocalDateTime();
-        LocalDateTime fimMes = inicioMes.plusMonths(1).minusNanos(1);
 
         Set<UUID> clientesComHistoricoAnterior = atendimentoRepository
                 .findByClinicaAndDataAtendimentoBefore(clinica, inicioMes).stream()
@@ -83,7 +82,7 @@ public class ResumoAgregador {
                 .collect(Collectors.toSet());
 
         Set<UUID> clientesDoMes = atendimentoRepository
-                .findByClinicaAndDataAtendimentoBetween(clinica, inicioMes, fimMes).stream()
+                .findPorIntervalo(clinica, inicioMes, inicioMes.plusMonths(1)).stream()
                 .map(atendimento -> atendimento.getCliente().getId())
                 .collect(Collectors.toSet());
 

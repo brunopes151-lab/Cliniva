@@ -148,13 +148,28 @@ primeiro acesso cria a clínica local via onboarding (`/cadastro`); a conta
 |---------|-----------|
 | Clientes | `GET/POST /api/clientes` · `GET/PUT/DELETE /api/clientes/{id}` · busca por `?nome=`, `?status=` |
 | Cliente · CRM | `GET /api/clientes/{id}/historico` · `GET/POST /api/clientes/{id}/notas` · `DELETE /api/clientes/{id}/notas/{notaId}` · `GET /api/clientes/aniversariantes?mes=` |
-| Serviços | `GET/POST /api/servicos` · `GET/PUT/DELETE /api/servicos/{id}` |
+| Serviços | `GET/POST /api/servicos` · `GET/PUT/DELETE /api/servicos/{id}` (campo `duracaoMinutos`, 1–1440) |
 | Itens/Estoque | `GET/POST /api/items` · `GET/PUT/DELETE /api/items/{id}` · `PATCH /api/items/{id}/estoque` |
-| Atendimentos | `GET/POST /api/atendimentos` · `GET /api/atendimentos/{id}` · `PATCH /{id}/status` |
+| Atendimentos | `GET/POST /api/atendimentos` · `GET/PUT /api/atendimentos/{id}` · `PATCH /{id}/status` |
+| Agenda (autenticada) | `GET /api/agenda?data=` · `GET /api/agenda/link` · `GET /api/agenda/disponibilidade?data=&servicoId=` · `GET/PUT /api/agenda/horarios` |
+| Booking público | `GET /api/public/booking/{slug}/servicos` · `GET /api/public/booking/{slug}/disponibilidade?data=&servicoId=` · `POST /api/public/booking/{slug}` |
+| Resumo do dia | `GET /api/resumo-do-dia` (limite de 5 gerações/dia/clínica) |
 
 Filtros de atendimento: `?status=`, `?clienteId=`, `?dataInicio=`, `?dataFim=`.
 
-Erros seguem o formato `{"status", "mensagem", "erros"}` (400/401/403/404/409/503).
+### Agenda — regras
+
+- Todo agendamento (público ou interno) respeita o **expediente por clínica**
+  (`horario_atendimento`) e a **janela de 30 dias** (hoje … hoje+30).
+- Datas passadas são recusadas.
+- Sobreposição de horários é bloqueada sob **lock pessimista por clínica**
+  (`SELECT ... FOR UPDATE`); o banco também recusa estoque negativo.
+- A duração do atendimento é a **soma das durações dos serviços** (snapshot).
+- O booking público só funciona para clínicas **ativas** e tem **rate limit**
+  (5 tentativas por clínica+telefone+IP a cada 10 min).
+- O link público de uma clínica é `https://<frontend>/agendar/<slug>`.
+
+Erros seguem o formato `{"status", "mensagem", "erros"}` (400/401/403/404/409/429/503).
 
 ## Deploy (v0.3.0)
 
@@ -165,14 +180,29 @@ Erros seguem o formato `{"status", "mensagem", "erros"}` (400/401/403/404/409/50
    `supabase`) e a **Production branch = `production`**. Ao dar merge
    em `production`, a integração aplica `supabase/migrations/` no banco
    de produção automaticamente.
+   - ⚠️ Migrations são aplicadas **na ordem do timestamp** e **não devem ser
+     editadas depois de aplicadas**: corrija sempre criando a próxima.
+   - Banco novo por SQL manual: use `supabase/schema.sql` (schema
+     consolidado das migrations 01→06).
 3. Em **Project Settings → API** copie: URL do projeto, `anon key`,
    `service_role key` e **Project Settings → Database → Connection URI`.
 4. Driver JDBC: `jdbc:postgresql://db.<ref>.supabase.co:5432/postgres?sslmode=require`
    (usuário `postgres` e a senha do banco).
 
-> **Ordem recomendada no deploy:** primeiro dê merge em `production`
-> (aplica as migrations), depois o deploy da app na `main` — o backend
-> sobe com `ddl-auto=validate` e exige o schema já existente.
+> **Ordem obrigatória no deploy:** primeiro dê merge em `production`
+> (aplica as migrations), **depois** o merge em `main` — o backend sobe com
+> `ddl-auto=validate` e exige o schema já existente. Inverter a ordem derruba
+> o backend.
+>
+> **Docker Compose com banco já existente:** as migrations só rodam com o
+> volume vazio. Para um ambiente já iniciado, aplique na mão:
+>
+> ```bash
+> docker compose exec -T db psql -U postgres -d cliniva \
+>   < supabase/migrations/20260909000006_agenda_hardening.sql
+> # ou recrie do zero (APAGA OS DADOS):
+> docker compose down -v && docker compose up -d
+> ```
 
 ### Backend (Render)
 
@@ -222,13 +252,35 @@ da Vercel — nenhum segredo de deploy é necessário no GitHub.
 
 ## Status
 
-🚀 **v0.3.0** — Auth, multi-tenant e administração: autenticação via
-Supabase (JWKS), isolamento de dados por clínica, painel admin com modo
-suporte e deploy em nuvem.
+🚀 **v0.4.0** — Agenda: expediente por clínica, duração de serviço com
+snapshot no atendimento, validação de conflitos, agenda interna e booking
+público por link.
+
+### v0.4.0 · Agenda
+
+- **Expediente por clínica** (dia da semana + abertura/fechamento), editável
+  em `/agenda`; padrão seg–sáb 08:00–18:00 semeado em toda clínica nova.
+- **Duração de serviço** (1–1440 min) propagada como snapshot no atendimento;
+  o fim do atendimento é exibido na grade.
+- **Validação de conflito** sob lock pessimista por clínica: dois
+  agendamentos simultâneos no mesmo horário não passam. O banco também recusa
+  estoque negativo.
+- **Janela única** para os dois fluxos: só entre hoje e hoje+30, nunca no
+  passado, sempre dentro do expediente.
+- **Agenda interna** (`/agenda`): grade diária, criar, remarcar, concluir,
+  cancelar, configurar expediente e copiar o link público.
+- **Booking público** (`/agendar/<slug>`): sem login, escolhe serviço/dia/
+  horário, cria ou reutiliza o cliente pelo telefone, origem `ONLINE`.
+  clinics inativas saem do ar; rate limit por clínica+telefone+IP.
+- **Provisioning único de clínica**: onboarding e painel admin geram slug
+  público e expediente do mesmo jeito (antes o admin deixava a clínica sem
+  link funcional).
+- **168 testes backend verdes.**
 
 ### v0.3.0 · Auth, Admin & Deploy
 
 - **Autenticação JWT** validada no backend via JWKS do Supabase
+  (o ADMIN master do seed é vinculado pelo e-mail no primeiro login)
   (`/api/public` aberto, `/api/**` autenticado, `/api/admin/**` somente ADMIN).
 - **Multi-tenant por clínica**: todos os recursos escopados pelo dono; o
   ADMIN acessa qualquer clínica em **modo suporte** (header `X-Clinica`).
@@ -276,7 +328,7 @@ suporte e deploy em nuvem.
 
 - [x] Autenticação/login via Supabase (JWT validado via JWKS)
 - [x] Multi-tenant por clínica + painel admin com modo suporte
-- [x] Deploy backend (Fly.io) + frontend (Vercel) + banco (Supabase)
+- [x] Deploy backend (Render) + frontend (Vercel) + banco (Supabase)
 
 ### MVP Backend ✅
 
@@ -306,8 +358,9 @@ suporte e deploy em nuvem.
 ### Deploy
 
 - [x] Auth/login (Supabase)
-- [x] Hospedagem: backend Fly.io + frontend Vercel + banco Supabase
+- [x] Hospedagem: backend Render + frontend Vercel + banco Supabase
 - [x] Deploy backend + banco na nuvem
+- [x] Agenda por clínica + booking público (v0.4.0)
 - [ ] PWA / instalação em home screen
 
 ## Ideias futuras (fora do escopo do MVP)
