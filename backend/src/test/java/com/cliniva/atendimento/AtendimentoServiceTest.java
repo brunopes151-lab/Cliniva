@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -48,6 +51,9 @@ import com.cliniva.tenancy.Clinica;
 
 @ExtendWith(MockitoExtension.class)
 class AtendimentoServiceTest {
+
+    @Spy
+    private final Clock clock = Clock.system(ZoneId.of("America/Sao_Paulo"));
 
         private static final UUID ATENDIMENTO_ID = UUID.randomUUID();
         private static final UUID CLIENTE_ID = UUID.randomUUID();

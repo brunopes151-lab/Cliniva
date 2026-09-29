@@ -50,26 +50,25 @@ public class BookingController {
     public BookingResponseDTO agendar(@PathVariable String slug,
             @Valid @RequestBody BookingRequestDTO request,
             HttpServletRequest httpRequest) {
-        rateLimiter.registrar(chaveDaOrigem(slug, request.telefone(), httpRequest));
+        rateLimiter.registrar(chaveDaOrigem(slug, httpRequest));
         return bookingService.agendar(slug, request);
     }
 
-    private String chaveDaOrigem(String slug, String telefone, HttpServletRequest request) {
-        StringBuilder forwarded = new StringBuilder();
+    /**
+     * Chave do rate limit: clínica + origem. O telefone NÃO entra na chave
+     * (trocar o número a cada request zeraria o contador) e o
+     * X-Forwarded-For usa o ÚLTIMO valor, que é o que o Render anexa —
+     * o primeiro é controlado pelo cliente e serviria de bypass.
+     */
+    private String chaveDaOrigem(String slug, HttpServletRequest request) {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
+        String origem;
         if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-            forwarded.append(xForwardedFor.split(",")[0].trim());
-        } else if (request.getRemoteAddr() != null) {
-            forwarded.append(request.getRemoteAddr());
+            String[] partes = xForwardedFor.split(",");
+            origem = partes[partes.length - 1].trim();
+        } else {
+            origem = request.getRemoteAddr();
         }
-        return slug + "|" + telefoneNormalizado(telefone) + "|" + forwarded;
-    }
-
-    private String telefoneNormalizado(String telefone) {
-        if (telefone == null) {
-            return "";
-        }
-        String digitos = telefone.replaceAll("\\D", "");
-        return digitos.startsWith("55") ? digitos : "55" + digitos;
+        return slug + "|" + (origem == null ? "desconhecida" : origem);
     }
 }

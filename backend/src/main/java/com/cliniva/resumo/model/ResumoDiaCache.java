@@ -37,7 +37,9 @@ public class ResumoDiaCache {
     @JoinColumn(name = "clinica_id", insertable = false, updatable = false)
     private Clinica clinica;
 
-    @Column(name = "texto", nullable = false)
+    // `text` no banco, não varchar(255): o resumo gerado por IA passa de 255
+    // caracteres. Sem columnDefinition, o Hibernate assumiria varchar(255).
+    @Column(name = "texto", nullable = false, columnDefinition = "text")
     private String texto;
 
     @Enumerated(EnumType.STRING)

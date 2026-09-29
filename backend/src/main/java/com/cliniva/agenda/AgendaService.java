@@ -42,8 +42,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AgendaService {
 
-    public static final ZoneId ZONA_BRASIL = ZoneId.of("America/Sao_Paulo");
-
     /** Teto de duração de um atendimento (1 dia) — evita wrap de LocalTime e abuse. */
     public static final int DURACAO_MAXIMA_MINUTOS = 1440;
 

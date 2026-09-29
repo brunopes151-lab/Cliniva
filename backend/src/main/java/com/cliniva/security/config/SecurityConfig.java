@@ -41,7 +41,7 @@ public class SecurityConfig {
                 .exceptionHandling(excecoes -> excecoes.authenticationEntryPoint(naoAutenticado()))
                 .authorizeHttpRequests(autoriza -> autoriza
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/public/**", "/actuator/health").permitAll()
+                        .requestMatchers("/api/public/**", "/api/saude/**", "/actuator/health").permitAll()
                         .requestMatchers("/api/**").authenticated())
                 .addFilterBefore(jwtFiltro, UsernamePasswordAuthenticationFilter.class);
         return http.build();

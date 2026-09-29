@@ -20,6 +20,7 @@ import com.cliniva.cliente.Cliente;
 import com.cliniva.cliente.ClienteRepository;
 import com.cliniva.cliente.enums.ClienteStatus;
 import com.cliniva.cliente.enums.OrigemCliente;
+import com.cliniva.common.Normalizador;
 import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
@@ -97,18 +98,11 @@ public class BookingService {
 
     /** Só dígitos, com DDI 55 para números brasileiros sem prefixo. */
     static String telefoneNormalizado(String telefone) {
-        String digitos = telefone == null ? "" : telefone.replaceAll("\\D", "");
-        if (digitos.isEmpty()) {
-            return telefone;
-        }
-        return digitos.startsWith("55") ? digitos : "55" + digitos;
+        return Normalizador.telefone(telefone);
     }
 
     private String emailNormalizado(String email) {
-        if (email == null || email.isBlank()) {
-            return null;
-        }
-        return email.trim().toLowerCase();
+        return Normalizador.email(email);
     }
 
     private Clinica buscarClinicaAtiva(String slug) {
