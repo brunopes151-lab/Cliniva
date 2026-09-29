@@ -23,6 +23,8 @@ import com.cliniva.tenancy.Clinica;
 import com.cliniva.tenancy.ClinicaContext;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -63,7 +65,7 @@ public class AgendaController {
     @PutMapping("/horarios")
     @ResponseStatus(HttpStatus.OK)
     public List<HorarioResponseDTO> atualizarHorarios(
-            @Valid @RequestBody List<HorarioRequestDTO> horarios) {
+            @Valid @RequestBody @NotEmpty @Size(max = 7) List<@Valid HorarioRequestDTO> horarios) {
         Clinica clinica = clinicaContext.obterClinicaAtual();
         return agendaService.atualizarHorarios(clinica, horarios);
     }

@@ -59,6 +59,10 @@ export function ServicosPage() {
       setFormErro('Duração deve ser maior que zero.')
       return
     }
+    if (form.duracaoMinutos > 1440) {
+      setFormErro('Duração deve ser de no máximo 1440 minutos (24h).')
+      return
+    }
     setSalvando(true)
     setFormErro('')
     try {
@@ -206,6 +210,7 @@ export function ServicosPage() {
             label="Duração (min) *"
             type="number"
             min={1}
+            max={1440}
             step={1}
             value={form.duracaoMinutos}
             onChange={(e) => setForm({ ...form, duracaoMinutos: Number(e.target.value) })}
@@ -228,13 +233,16 @@ export function ServicosPage() {
         title="Excluir serviço"
         message={`Tem certeza que deseja excluir "${deletando?.nome}"? Esta ação não pode ser desfeita.`}
         confirmLabel="Excluir"
+        error={deleteErro}
+        pending={salvando}
+        pendingLabel="Excluindo..."
         onConfirm={confirmarDelete}
         onCancel={() => {
+          if (salvando) return
           setDeletando(null)
           setDeleteErro('')
         }}
       />
-      {deleteErro && <ErrorBanner message={deleteErro} />}
     </>
   )
 }

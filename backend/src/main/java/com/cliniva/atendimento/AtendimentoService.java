@@ -73,6 +73,13 @@ public class AtendimentoService {
                 }
 
                 int duracaoTotal = servicos.stream().mapToInt(Servico::getDuracaoMinutos).sum();
+                if (duracaoTotal > AgendaService.DURACAO_MAXIMA_MINUTOS) {
+                        throw new TransicaoStatusInvalidaException("A soma das durações dos serviços excede "
+                                        + AgendaService.DURACAO_MAXIMA_MINUTOS + " minutos");
+                }
+                // validarDisponibilidade adquire o lock pessimista da clínica,
+                // garantindo check + insert atômicos (evita double booking e
+                // estoque negativo em agendamentos simultâneos).
                 agendaService.validarDisponibilidade(clinica, requestDTO.dataAtendimento(), duracaoTotal, null);
 
                 Atendimento atendimento = new Atendimento();

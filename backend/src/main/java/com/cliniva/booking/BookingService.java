@@ -20,7 +20,6 @@ import com.cliniva.cliente.Cliente;
 import com.cliniva.cliente.ClienteRepository;
 import com.cliniva.cliente.enums.ClienteStatus;
 import com.cliniva.cliente.enums.OrigemCliente;
-import com.cliniva.exception.HorarioIndisponivelException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
@@ -33,8 +32,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BookingService {
 
-    private static final int JANELA_DIAS = 30;
-
     private final ClinicaRepository clinicaRepository;
     private final ClienteRepository clienteRepository;
     private final ServicoRepository servicoRepository;
@@ -43,7 +40,7 @@ public class BookingService {
 
     @Transactional(readOnly = true)
     public List<ServicoPublicoDTO> listarServicos(String slug) {
-        Clinica clinica = buscarClinica(slug);
+        Clinica clinica = buscarClinicaAtiva(slug);
         return servicoRepository.findByClinica(clinica).stream()
                 .map(servico -> new ServicoPublicoDTO(servico.getId(), servico.getNome(),
                         servico.getDescricao(), servico.getValor(), servico.getDuracaoMinutos(),
@@ -53,31 +50,20 @@ public class BookingService {
 
     @Transactional(readOnly = true)
     public DisponibilidadeDiaDTO disponibilidade(String slug, LocalDate data, UUID servicoId) {
-        Clinica clinica = buscarClinica(slug);
-        validarJanela(data);
+        Clinica clinica = buscarClinicaAtiva(slug);
+        // Janela/passado são validados dentro de AgendaService (regra única).
         return agendaService.disponibilidadeDia(clinica, data, servicoId);
     }
 
     @Transactional
     public BookingResponseDTO agendar(String slug, BookingRequestDTO request) {
-        Clinica clinica = buscarClinica(slug);
+        Clinica clinica = buscarClinicaAtiva(slug);
         Servico servico = servicoRepository.findByIdAndClinica(request.servicoId(), clinica)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Serviço não encontrado"));
 
-        validarJanela(request.dataHora().toLocalDate());
-        agendaService.validarDisponibilidade(clinica, request.dataHora(), servico.getDuracaoMinutos(), null);
-
-        Cliente cliente = clienteRepository.findByTelefoneAndClinica(request.telefone(), clinica)
-                .orElseGet(() -> {
-                    Cliente novo = new Cliente();
-                    novo.setClinica(clinica);
-                    novo.setNome(request.nome().trim());
-                    novo.setEmail(request.email());
-                    novo.setTelefone(request.telefone());
-                    novo.setOrigem(OrigemCliente.ONLINE);
-                    novo.setStatus(ClienteStatus.PROSPECT);
-                    return clienteRepository.save(novo);
-                });
+        // Validação real (janela, expediente, passado e conflito) acontece em
+        // createAtendimento, já sob lock pessimista da clínica.
+        Cliente cliente = localizarOuCriarCliente(clinica, request);
 
         CreateAtendimentoRequestDTO atendimentoRequest = new CreateAtendimentoRequestDTO(
                 cliente.getId(),
@@ -94,16 +80,39 @@ public class BookingService {
                 cliente.getNome());
     }
 
-    private Clinica buscarClinica(String slug) {
-        return clinicaRepository.findBySlug(slug)
-                .orElseThrow(() -> new RecursoNaoEncontradoException("Clínica não encontrada"));
+    private Cliente localizarOuCriarCliente(Clinica clinica, BookingRequestDTO request) {
+        String telefone = telefoneNormalizado(request.telefone());
+        return clienteRepository.findByTelefoneAndClinica(telefone, clinica)
+                .orElseGet(() -> {
+                    Cliente novo = new Cliente();
+                    novo.setClinica(clinica);
+                    novo.setNome(request.nome().trim());
+                    novo.setEmail(emailNormalizado(request.email()));
+                    novo.setTelefone(telefone);
+                    novo.setOrigem(OrigemCliente.ONLINE);
+                    novo.setStatus(ClienteStatus.PROSPECT);
+                    return clienteRepository.save(novo);
+                });
     }
 
-    private void validarJanela(LocalDate data) {
-        LocalDate hoje = LocalDate.now(AgendaService.ZONA_BRASIL);
-        if (data.isBefore(hoje) || data.isAfter(hoje.plusDays(JANELA_DIAS))) {
-            throw new HorarioIndisponivelException(
-                    "Só é possível agendar entre hoje e os próximos " + JANELA_DIAS + " dias");
+    /** Só dígitos, com DDI 55 para números brasileiros sem prefixo. */
+    static String telefoneNormalizado(String telefone) {
+        String digitos = telefone == null ? "" : telefone.replaceAll("\\D", "");
+        if (digitos.isEmpty()) {
+            return telefone;
         }
+        return digitos.startsWith("55") ? digitos : "55" + digitos;
+    }
+
+    private String emailNormalizado(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        return email.trim().toLowerCase();
+    }
+
+    private Clinica buscarClinicaAtiva(String slug) {
+        return clinicaRepository.findBySlugAndAtivaTrue(slug)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Clínica não encontrada"));
     }
 }

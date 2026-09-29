@@ -20,6 +20,7 @@ import com.cliniva.booking.dtos.BookingRequestDTO;
 import com.cliniva.booking.dtos.BookingResponseDTO;
 import com.cliniva.booking.dtos.ServicoPublicoDTO;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final BookingRateLimiter rateLimiter;
 
     @GetMapping("/{slug}/servicos")
     public List<ServicoPublicoDTO> listarServicos(@PathVariable String slug) {
@@ -46,7 +48,28 @@ public class BookingController {
     @PostMapping("/{slug}")
     @ResponseStatus(HttpStatus.CREATED)
     public BookingResponseDTO agendar(@PathVariable String slug,
-            @Valid @RequestBody BookingRequestDTO request) {
+            @Valid @RequestBody BookingRequestDTO request,
+            HttpServletRequest httpRequest) {
+        rateLimiter.registrar(chaveDaOrigem(slug, request.telefone(), httpRequest));
         return bookingService.agendar(slug, request);
+    }
+
+    private String chaveDaOrigem(String slug, String telefone, HttpServletRequest request) {
+        StringBuilder forwarded = new StringBuilder();
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+            forwarded.append(xForwardedFor.split(",")[0].trim());
+        } else if (request.getRemoteAddr() != null) {
+            forwarded.append(request.getRemoteAddr());
+        }
+        return slug + "|" + telefoneNormalizado(telefone) + "|" + forwarded;
+    }
+
+    private String telefoneNormalizado(String telefone) {
+        if (telefone == null) {
+            return "";
+        }
+        String digitos = telefone.replaceAll("\\D", "");
+        return digitos.startsWith("55") ? digitos : "55" + digitos;
     }
 }

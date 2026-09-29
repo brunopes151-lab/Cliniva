@@ -54,7 +54,7 @@ class ResumoAgregadorTest {
         Atendimento cancelado = atendimento(clinica, "2026-09-18T09:00", StatusAtendimento.CANCELADO,
                 cliente("2").getId());
 
-        when(atendimentoRepository.findByClinicaAndDataAtendimentoBetween(eq(clinica), any(), any()))
+        when(atendimentoRepository.findPorIntervalo(eq(clinica), any(), any()))
                 .thenReturn(List.of(atendido, cancelado));
         when(atendimentoServicoRepository.somarValorCobradoPorStatusEPeriodo(eq(clinica),
                 eq(StatusAtendimento.AGENDADO), any(), any())).thenReturn(new BigDecimal("150.00"));
@@ -63,7 +63,7 @@ class ResumoAgregadorTest {
         when(atendimentoRepository.findByClinicaAndDataAtendimentoBefore(eq(clinica), any()))
                 .thenReturn(List.of(atendimento(clinica, "2026-08-10T10:00", StatusAtendimento.CONCLUIDO,
                         cliente("1").getId())));
-        when(atendimentoRepository.findByClinicaAndDataAtendimentoBetween(eq(clinica),
+        when(atendimentoRepository.findPorIntervalo(eq(clinica),
                 eq(HOJE.withDayOfMonth(1).atStartOfDay(ZONA).toLocalDateTime()), any()))
                 .thenReturn(List.of(atendido));
         when(clienteRepository.findAniversariantesHojeByClinica(18, 9, clinica))
@@ -92,9 +92,9 @@ class ResumoAgregadorTest {
         when(atendimentoRepository.findByClinicaAndDataAtendimentoBefore(eq(clinica), any()))
                 .thenReturn(List.of(atendimento(clinica, "2026-08-10T10:00",
                         StatusAtendimento.CONCLUIDO, antiga)));
-        when(atendimentoRepository.findByClinicaAndDataAtendimentoBetween(eq(clinica), any(), any()))
+        when(atendimentoRepository.findPorIntervalo(eq(clinica), any(), any()))
                 .thenReturn(List.of());
-        when(atendimentoRepository.findByClinicaAndDataAtendimentoBetween(eq(clinica),
+        when(atendimentoRepository.findPorIntervalo(eq(clinica),
                 eq(HOJE.withDayOfMonth(1).atStartOfDay(ZONA).toLocalDateTime()), any()))
                 .thenReturn(List.of(
                         atendimento(clinica, "2026-09-05T10:00", StatusAtendimento.CONCLUIDO, antiga),

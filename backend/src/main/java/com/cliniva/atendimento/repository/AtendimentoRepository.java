@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import com.cliniva.atendimento.model.Atendimento;
 import com.cliniva.tenancy.Clinica;
@@ -19,8 +20,15 @@ public interface AtendimentoRepository
 
     List<Atendimento> findByCliente_Id(UUID clienteId);
 
-    List<Atendimento> findByClinicaAndDataAtendimentoBetween(Clinica clinica,
-            LocalDateTime inicio, LocalDateTime fim);
+    /**
+     * Intervalo semiaberto [inicio, fim): um atendimento exatamente à meia-noite
+     * pertence apenas ao dia seguinte (sem duplicidade entre dias).
+     */
+    @Query("SELECT a FROM Atendimento a WHERE a.clinica = :clinica "
+            + "AND a.dataAtendimento >= :inicio AND a.dataAtendimento < :fim")
+    List<Atendimento> findPorIntervalo(@Param("clinica") Clinica clinica,
+            @Param("inicio") LocalDateTime inicio,
+            @Param("fim") LocalDateTime fim);
 
     List<Atendimento> findByClinicaAndDataAtendimentoBefore(Clinica clinica,
             LocalDateTime data);

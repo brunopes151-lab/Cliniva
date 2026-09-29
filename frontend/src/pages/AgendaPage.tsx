@@ -47,6 +47,15 @@ function hojeISO(): string {
   return toISODate(agora)
 }
 
+/** Limite da janela de agendamento — mesma regra de 30 dias do backend. */
+const JANELA_DIAS = 30
+
+function dataMaximaISO(): string {
+  const dt = new Date()
+  dt.setDate(dt.getDate() + JANELA_DIAS)
+  return toISODate(dt)
+}
+
 function formatDataLongaISO(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
   return formatDataLonga(new Date(a, m - 1, d).toISOString())
@@ -98,6 +107,7 @@ export function AgendaPage() {
   const [servicosForm, setServicosForm] = useState<ServicoRow[]>([emptyServicoRow])
   const [criarErro, setCriarErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [aviso, setAviso] = useState('')
 
   const [disponibilidade, setDisponibilidade] = useState<DisponibilidadeDia | null>(null)
   const [buscaServico, setBuscaServico] = useState('')
@@ -129,14 +139,27 @@ export function AgendaPage() {
     setCriando(true)
   }
 
-  const atualizarServico = (index: number, servicoId: string) => {
-    setServicosForm(servicosForm.map((row, i) => (i === index ? { ...row, servicoId } : row)))
+  // A disponibilidade é sempre invalidada quando o formulário muda: manter
+  // horários de uma configuração anterior fazia o clique gravar o dia/serviço
+  // antigo sem aviso.
+  const invalidarDisponibilidade = () => {
+    setDisponibilidade(null)
+    setBuscarErro('')
   }
 
-  const adicionarServico = () => setServicosForm([...servicosForm, emptyServicoRow])
+  const atualizarServico = (index: number, servicoId: string) => {
+    setServicosForm(servicosForm.map((row, i) => (i === index ? { ...row, servicoId } : row)))
+    invalidarDisponibilidade()
+  }
+
+  const adicionarServico = () => {
+    setServicosForm([...servicosForm, emptyServicoRow])
+    invalidarDisponibilidade()
+  }
 
   const removerServico = (index: number) => {
     setServicosForm(servicosForm.filter((_, i) => i !== index))
+    invalidarDisponibilidade()
   }
 
   const adicionarItemExtra = (index: number) => {
@@ -216,10 +239,19 @@ export function AgendaPage() {
 
     setSalvando(true)
     setCriarErro('')
+    setAviso('')
     try {
       await atendimentosApi.criar(payload)
       setCriando(false)
-      refetch()
+      // Navega para o dia do agendamento criado: sem isso, salvar para outro
+      // dia não mudava nada na tela e o usuário achava que falhou.
+      const diaCriado = payload.dataAtendimento.slice(0, 10)
+      if (diaCriado !== data) {
+        setData(diaCriado)
+      } else {
+        refetch()
+      }
+      setAviso('Atendimento agendado com sucesso.')
     } catch (err) {
       setCriarErro(err instanceof Error ? err.message : 'Falha ao criar atendimento.')
     } finally {
@@ -362,6 +394,12 @@ export function AgendaPage() {
 
       {error && <ErrorBanner message={error} />}
 
+      {aviso && (
+        <div className="mb-6 border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-ink">
+          {aviso}
+        </div>
+      )}
+
       {loading ? (
         <Spinner />
       ) : !itens || itens.length === 0 ? (
@@ -453,11 +491,13 @@ export function AgendaPage() {
                       {formatMoeda(atendimento.valorTotal)}
                     </td>
                     <td className="py-4 text-right whitespace-nowrap">
-                      <LembrarLink
-                        inicio={atendimento.inicio}
-                        nome={atendimento.clienteNome}
-                        telefone={atendimento.clienteTelefone}
-                      />
+                      {atendimento.status === 'AGENDADO' && (
+                        <LembrarLink
+                          inicio={atendimento.inicio}
+                          nome={atendimento.clienteNome}
+                          telefone={atendimento.clienteTelefone}
+                        />
+                      )}
                       {atendimento.status === 'AGENDADO' && (
                         <>
                           <Button
@@ -515,8 +555,13 @@ export function AgendaPage() {
           <TextField
             label="Data e horário *"
             type="datetime-local"
+            min={hojeISO()}
+            max={`${dataMaximaISO()}T23:59`}
             value={dataAtendimento}
-            onChange={(e) => setDataAtendimento(e.target.value)}
+            onChange={(e) => {
+              setDataAtendimento(e.target.value)
+              invalidarDisponibilidade()
+            }}
           />
 
           <div className="border border-hairline bg-ivory p-4">
@@ -525,7 +570,10 @@ export function AgendaPage() {
               <Select
                 label="Serviço"
                 value={buscaServico}
-                onChange={(e) => setBuscaServico(e.target.value)}
+                onChange={(e) => {
+                  setBuscaServico(e.target.value)
+                  invalidarDisponibilidade()
+                }}
                 className="flex-1"
               >
                 <option value="">Selecione...</option>
@@ -543,8 +591,12 @@ export function AgendaPage() {
                 label="Dia"
                 type="date"
                 min={hojeISO()}
+                max={dataMaximaISO()}
                 value={buscaData}
-                onChange={(e) => setBuscaData(e.target.value)}
+                onChange={(e) => {
+                  setBuscaData(e.target.value)
+                  invalidarDisponibilidade()
+                }}
                 className="w-full sm:w-44"
               />
               <Button variant="secondary" size="sm" className="self-start sm:mb-1" onClick={buscarDisponibilidade} disabled={buscando}>
@@ -775,13 +827,16 @@ export function AgendaPage() {
         title={acaoConcluindo ? 'Concluir atendimento' : 'Cancelar atendimento'}
         message={acaoMensagem}
         confirmLabel={acaoConcluindo ? 'Concluir' : 'Cancelar atendimento'}
+        error={acaoErro}
+        pending={salvando}
+        pendingLabel={acaoConcluindo ? 'Concluindo...' : 'Cancelando...'}
         onConfirm={confirmarAcao}
         onCancel={() => {
+          if (salvando) return
           setAcaoStatus(null)
           setAcaoErro('')
         }}
       />
-      {acaoErro && <ErrorBanner message={acaoErro} />}
     </>
   )
 }
