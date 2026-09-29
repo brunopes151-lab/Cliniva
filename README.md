@@ -236,6 +236,12 @@ Secrets preenchidos no painel do serviço (Environment), **fora do git**:
 
 Health check: `GET https://cliniva-hrpj.onrender.com/actuator/health`.
 
+> ⚠️ O serviço no painel do Render se chama `cliniva-backend` (ver
+> `render.yaml`), mas a URL é `cliniva-hrpj.onrender.com`. São nomes
+> diferentes — não conclua que o deploy falhou só porque não batem.
+> O que vale é o **log do deploy**: se o processo morre, o Render continua
+> servindo o container antigo e o health check continua respondendo 200.
+
 ### Frontend (Vercel)
 
 1. Importe o repositório na Vercel (framework detectado: Vite), `dist` de saída.
@@ -243,6 +249,16 @@ Health check: `GET https://cliniva-hrpj.onrender.com/actuator/health`.
 3. Adicione o domínio da Vercel em `CLINIVA_CORS_ORIGIN` do backend.
 
 O arquivo `vercel.json` faz o rewrite SPA para `index.html`.
+
+**Domínio de produção:** `https://cliniva-wheat.vercel.app`
+
+> ⚠️ Esse é o domínio real do projeto. O `cliniva.vercel.app` é um domínio
+> antigo/orfão, servido por um projeto Vercel anterior — ele **não** recebe
+> deploy e continua servindo um bundle antigo. Ao validar a agenda em
+> produção, use sempre `cliniva-wheat.vercel.app`.
+
+Link público de booking de uma clínica:
+`https://cliniva-wheat.vercel.app/agendar/<slug>`.
 
 ### CI
 
