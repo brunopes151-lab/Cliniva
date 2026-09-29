@@ -3,7 +3,8 @@
 -- Consolidação: 20260909000001_baseline +
 -- 20260909000002_tenant + 20260909000003_seed_administracao +
 -- 20260909000004_resumo_dia_cache + 20260909000005_agenda +
--- 20260909000006_agenda_hardening
+-- 20260909000006_agenda_hardening +
+-- 20260909000007_dia_semana_integer
 -- Para USO MANUAL (SQL Editor do Supabase) em banco NOVO (vazio).
 -- =====================================================================
 
@@ -191,7 +192,7 @@ WHERE slug IS NULL;
 
 CREATE TABLE horario_atendimento (
     clinica_id uuid NOT NULL,
-    dia_semana smallint NOT NULL,
+    dia_semana integer NOT NULL,
     abertura time NOT NULL,
     fechamento time NOT NULL,
     ativo boolean NOT NULL DEFAULT true,
