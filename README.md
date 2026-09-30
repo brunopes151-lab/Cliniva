@@ -141,6 +141,17 @@ primeiro acesso cria a clínica local via onboarding (`/cadastro`); a conta
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (criar usuários/reset de senha) |
 | `SUPABASE_JWT_SECRET` | Segredo do JWT (fallback HS256) |
 | `CLINIVA_CORS_ORIGIN` | Origem permitida no CORS (default `http://localhost:5173`) |
+| `LLM_PROVIDER` | `gemini` ou `groq`. **Vazio = nenhuma chamada externa** (resumo por template) |
+| `LLM_GEMINI_API_KEY` | Chave da API Gemini (só se `LLM_PROVIDER=gemini`) |
+| `LLM_GEMINI_MODEL` | Default `gemini-3.5-flash-lite` |
+| `LLM_GROQ_API_KEY` | Chave da API Groq (só se `LLM_PROVIDER=groq`) |
+| `LLM_GROQ_MODEL` | Default `llama-3.1-8b-instant` |
+
+> Os defaults de modelo são conferidos contra a documentação oficial dos
+> providers. Se trocar, confira a lista atual antes: um nome de modelo
+> inválido faz **toda** chamada falhar, e o resumo cai no template sem
+> erro visível na tela — [Gemini](https://ai.google.dev/gemini-api/docs/models) ·
+> [Groq](https://console.groq.com/docs/models).
 
 ## API — visão geral
 
