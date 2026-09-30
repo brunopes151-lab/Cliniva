@@ -110,7 +110,17 @@ public class AtendimentoService {
 
                         List<ItemUsadoRealDTO> itensRealizados = new ArrayList<>();
 
-                        for (ItemUsadoDTO itemUsadoDTO : servicoSelecionado.itensExtras()) {
+                        // `itensExtras` é opcional na API: ausente precisa
+                        // significar "nenhum item", não NPE. Sem este guarda,
+                        // criar um atendimento sem itens extras quebrava com
+                        // NullPointerException — que ainda virava 401 na
+                        // resposta (ver SecurityConfig), então parecia falha
+                        // de autenticação em vez de bug.
+                        List<ItemUsadoDTO> itensExtras = servicoSelecionado.itensExtras() != null
+                                        ? servicoSelecionado.itensExtras()
+                                        : List.of();
+
+                        for (ItemUsadoDTO itemUsadoDTO : itensExtras) {
                                 Item itemEncontrado = itemRepository.findByIdAndClinica(itemUsadoDTO.itemId(),
                                                 clinica)
                                                 .orElseThrow(() -> new RecursoNaoEncontradoException(

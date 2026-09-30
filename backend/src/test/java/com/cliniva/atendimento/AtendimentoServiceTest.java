@@ -147,6 +147,35 @@ class AtendimentoServiceTest {
                                 List.of(new ServicoSelecionadoDTO(SERVICO_ID, List.of(itens))));
         }
 
+        /**
+         * `itensExtras` ausente precisa significar "nenhum item". Antes isso
+         * quebrava com NullPointerException — que virava 401 na resposta por
+         * causa do dispatch de erro, então parecia token expirado.
+         */
+        @Test
+        void deveCriarAtendimentoQuandoItensExtrasVemAusente() {
+                Servico servico = servico("150.00");
+
+                when(clienteRepository.findByIdAndClinica(CLIENTE_ID, CLINICA))
+                                .thenReturn(Optional.of(cliente(CLIENTE_ID, "Maria")));
+                when(servicoRepository.findByIdAndClinica(SERVICO_ID, CLINICA)).thenReturn(Optional.of(servico));
+                when(atendimentoRepository.save(any(Atendimento.class)))
+                                .thenAnswer(invocacao -> invocacao.getArgument(0));
+                when(atendimentoServicoRepository.save(any(AtendimentoServico.class)))
+                                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+                var requisicao = new CreateAtendimentoRequestDTO(
+                                CLIENTE_ID,
+                                LocalDateTime.now().plusDays(1),
+                                List.of(new ServicoSelecionadoDTO(SERVICO_ID, null)));
+
+                var resposta = atendimentoService.createAtendimento(CLINICA, requisicao);
+
+                assertThat(resposta.servicos()).hasSize(1);
+                assertThat(resposta.servicos().get(0).itensExtras()).isEmpty();
+                verify(itemRepository, never()).findByIdAndClinica(any(), any());
+        }
+
         // ---------- criação ----------
 
         @Test
