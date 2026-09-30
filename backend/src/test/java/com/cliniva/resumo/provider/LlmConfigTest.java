@@ -24,6 +24,17 @@ import org.junit.jupiter.api.Test;
  * consciente: trocar a lista abaixo exige olhar a documentação oficial do
  * provider. Os links ficam no comentário.
  *
+ * <p>E nem a documentação basta: nem todo modelo listado está acessível
+ * para toda conta. Com a chave deste projeto, `llama-3.1-8b-instant` e
+ * `llama-3.3-70b-versatile` — ambos na documentação — retornam
+ * `model_not_found`. Por isso a lista abaixo é o que a API respondeu em
+ * 2026-09-30, não o que a doc prometia. Para revalidar:
+ *
+ * <pre>
+ * curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $CHAVE"
+ * </pre>
+ *
+ *
  * <ul>
  * <li>Gemini: https://ai.google.dev/gemini-api/docs/models</li>
  * <li>Groq: https://console.groq.com/docs/models</li>
@@ -44,10 +55,10 @@ class LlmConfigTest {
             "gemini-2.5-flash");
 
     private static final Set<String> MODELOS_GROQ = Set.of(
-            "llama-3.1-8b-instant",
-            "llama-3.3-70b-versatile",
             "openai/gpt-oss-20b",
-            "openai/gpt-oss-120b");
+            "openai/gpt-oss-120b",
+            "qwen/qwen3.8-27b",
+            "allam-2-7b");
 
     /**
      * Lê o {@code application.properties} <b>do main</b> pelo filesystem, e

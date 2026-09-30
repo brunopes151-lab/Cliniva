@@ -145,7 +145,7 @@ primeiro acesso cria a clínica local via onboarding (`/cadastro`); a conta
 | `LLM_GEMINI_API_KEY` | Chave da API Gemini (só se `LLM_PROVIDER=gemini`) |
 | `LLM_GEMINI_MODEL` | Default `gemini-3.5-flash-lite` |
 | `LLM_GROQ_API_KEY` | Chave da API Groq (só se `LLM_PROVIDER=groq`) |
-| `LLM_GROQ_MODEL` | Default `llama-3.1-8b-instant` |
+| `LLM_GROQ_MODEL` | Default `openai/gpt-oss-20b` |
 
 > Os defaults de modelo são conferidos contra a documentação oficial dos
 > providers. Se trocar, confira a lista atual antes: um nome de modelo
