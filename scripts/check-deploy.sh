@@ -33,18 +33,24 @@ echo ""
 full_sha="$(git rev-parse "$EXPECTED" 2>/dev/null || echo "$EXPECTED")"
 
 echo "==> Health"
-health_code="$(curl -s -o /dev/null -w '%{http_code}' -m 60 "$API/actuator/health" || echo 000)"
+# O free tier do Render dorme: a primeira requisição pode levar ~2 min. O
+# timeout generoso aqui é proposital, senão todo deploy noturno "falha".
+health_code="$(curl -s -o /dev/null -w '%{http_code}' -m 300 "$API/actuator/health" || true)"
 if [ "$health_code" != "200" ]; then
-    echo "    ERRO: /actuator/health -> $health_code"
+    echo "    ERRO: /actuator/health -> ${health_code:-sem resposta}"
     exit 1
 fi
 echo "    ok (200)"
 
 echo "==> Build em produção"
-info="$(curl -s -m 30 "$API/api/saude/build" || true)"
+info="$(curl -s -m 60 "$API/api/saude/build" || true)"
 if [ -z "$info" ] || ! echo "$info" | grep -q '"commit"'; then
-    echo "    ERRO: /api/saude/build não respondeu (build antigo, sem a rota?)"
+    echo "    ERRO: /api/saude/build não devolveu o commit — deploy não entrou."
     echo "    resposta: ${info:-vazia}"
+    echo ""
+    echo "    401 aqui significa que o build em produção ainda NÃO tem o"
+    echo "    permitAll de /api/saude/** — é o container antigo servindo."
+    echo "    Confira o deploy no Render; o health check 200 não prova nada."
     exit 1
 fi
 echo "    $info"
