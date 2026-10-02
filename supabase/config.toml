@@ -3,7 +3,7 @@
 
 # Referência local: o projeto é linkado ao remoto via `supabase link`
 # (gera supabase/.temp/project-ref com o project ref real — não versionar).
-project_id = "cliniva"
+project_id = "fduwrwcmgzookeegsgto"
 
 [api]
 enabled = true

@@ -1,0 +1,94 @@
+name: migrations
+
+# Por que existe: a integração do GitHub no painel do Supabase estava
+# configurada com "Working directory = supabase", que faz a CLI procurar
+# `supabase/supabase/migrations/` — caminho que não existe. Resultado: ela não
+# achava migration nenhuma e o check "Supabase Preview" ficava em `skipping`
+# para sempre, sem erro. As migrations 06 e 07 chegaram a ser aplicadas à
+# mão, e a 08 ficou 45 minutos pendente.
+#
+# Este workflow deixa a aplicação no log do GitHub, onde dá para ver a falha.
+# Um toggle invisível no painel que falha calado é exatamente o que custou o
+# incidente do `dia_semana`.
+
+on:
+  push:
+    branches: [production]
+  pull_request:
+    # Só mostra o que seria aplicado; não toca em nenhum banco.
+    paths: ['supabase/migrations/**']
+  workflow_dispatch:
+
+concurrency:
+  group: migrations-producao
+  # Nunca cancela uma aplicação no meio: deixaria a migration pela metade.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  revisar:
+    name: Revisar migrations pendentes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: O que seria aplicado
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        # --db-url sem `--password` porque a URL já vem com a senha embutida.
+        # `--dry-run` não escreve nada; serve para o PR mostrar se a migration
+        # é válida e se está mesmo pendente.
+        run: |
+          supabase db push --db-url "$DATABASE_URL" --dry-run
+
+  aplicar:
+    name: Aplicar migrations em produção
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Situação antes de aplicar
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          echo "registradas: $(psql "$DATABASE_URL" -tAc \
+            'select count(*) from supabase_migrations.schema_migrations')"
+          echo "arquivos:    $(ls supabase/migrations/*.sql | wc -l)"
+
+      - name: Aplicar
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: supabase db push --db-url "$DATABASE_URL"
+
+      - name: Conferir que aplicou tudo
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        # "Rodou" e "fez o que devia" são coisas diferentes — foi essa diferença
+        # que escondeu a migration do `dia_semana`: ela rodou, criou a
+        # coluna, e a coluna ficou com o tipo errado. Comparar contagem de
+        # arquivos com contagem de registros pega qualquer migration que não
+        # entrou, e é genérico: vale para as próximas sem ajuste.
+        run: |
+          arquivos=$(ls supabase/migrations/*.sql | wc -l | tr -d ' ')
+          registradas=$(psql "$DATABASE_URL" -tAc \
+            'select count(*) from supabase_migrations.schema_migrations' | tr -d ' ')
+          echo "arquivos no repo: $arquivos | registradas no banco: $registradas"
+          if [ "$arquivos" != "$registradas" ]; then
+            echo "::error::divergencia — ha migration no repo que o banco nao registra"
+            psql "$DATABASE_URL" -c \
+              "select version from supabase_migrations.schema_migrations order by version desc limit 5"
+            exit 1
+          fi
+          echo "tudo aplicado"
