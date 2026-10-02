@@ -3,6 +3,7 @@ package com.cliniva.agenda.model;
 import java.time.LocalTime;
 
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.Profissional;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
@@ -30,6 +31,12 @@ public class HorarioAtendimento {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "clinica_id", nullable = false)
     private Clinica clinica;
+
+    /** Quem atende neste dia. Faz parte da chave primária desde a migration 08. */
+    @MapsId("profissionalId")
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "profissional_id", nullable = false)
+    private Profissional profissional;
 
     @Column(name = "abertura", nullable = false)
     private LocalTime abertura;

@@ -34,6 +34,8 @@ import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.Profissional;
+import com.cliniva.tenancy.ProfissionalService;
 import com.cliniva.tenancy.ClinicaRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -55,6 +57,7 @@ public class AgendaService {
     private final ServicoRepository servicoRepository;
     private final HorarioAtendimentoRepository horarioRepository;
     private final ClinicaRepository clinicaRepository;
+    private final ProfissionalService profissionalService;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -159,11 +162,20 @@ public class AgendaService {
                 .toList();
     }
 
+    /**
+     * Atualiza o expediente da clínica, hojeodo no profissional "Geral".
+     *
+     * <p>Quando o expediente passar a ser por profissional de verdade, esta
+     * assinatura ganha um {@code profissionalId}. Por enquanto opera no Geral
+     * para o comportamento atual não mudar — é o mesmo profissional que
+     * {@link #semearPadrao} usa.
+     */
     @Transactional
     public List<HorarioResponseDTO> atualizarHorarios(Clinica clinica, List<HorarioRequestDTO> horarios) {
         if (horarios == null || horarios.isEmpty() || horarios.size() > 7) {
             throw new IllegalArgumentException("Informe entre 1 e 7 dias de expediente");
         }
+        Profissional geral = profissionalService.garantirGeral(clinica);
         Set<Integer> dias = new HashSet<>();
         for (HorarioRequestDTO request : horarios) {
             if (request.diaSemana() == null) {
@@ -175,11 +187,13 @@ public class AgendaService {
             if (!request.abertura().isBefore(request.fechamento())) {
                 throw new IllegalArgumentException("Abertura deve ser antes do fechamento");
             }
-            HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(), request.diaSemana());
+            HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(),
+                    geral.getId(), request.diaSemana());
             HorarioAtendimento horario = horarioRepository.findById(id).orElseGet(() -> {
                 HorarioAtendimento novo = new HorarioAtendimento();
                 novo.setId(id);
                 novo.setClinica(clinica);
+                novo.setProfissional(geral);
                 return novo;
             });
             horario.setAbertura(request.abertura());
@@ -190,17 +204,28 @@ public class AgendaService {
         return listarHorarios(clinica);
     }
 
-    /** Expediente padrão de segunda a sábado, 08:00–18:00. */
+    /**
+     * Expediente padrão de segunda a sábado, 08:00–18:00, atribuído ao
+     * profissional "Geral" da clínica.
+     *
+     * <p>O profissional é obrigatório desde a migration 08: a chave primária
+     * de {@code horario_atendimento} passou a incluir
+     * {@code profissional_id}, então o Postgres recusa INSERT sem ele. Sem
+     * este passo, {@code POST /api/public/onboarding} falha — é o que
+     * destrava a criação de clínica.
+     */
     @Transactional
     public void semearPadrao(Clinica clinica) {
+        Profissional geral = profissionalService.garantirGeral(clinica);
         for (int dia = 1; dia <= 6; dia++) {
-            HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(), dia);
+            HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(), geral.getId(), dia);
             if (horarioRepository.existsById(id)) {
                 continue;
             }
             HorarioAtendimento horario = new HorarioAtendimento();
             horario.setId(id);
             horario.setClinica(clinica);
+            horario.setProfissional(geral);
             horario.setAbertura(LocalTime.of(8, 0));
             horario.setFechamento(LocalTime.of(18, 0));
             horario.setAtivo(true);

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -43,6 +44,8 @@ import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.tenancy.Clinica;
 import com.cliniva.tenancy.ClinicaRepository;
+import com.cliniva.tenancy.Profissional;
+import com.cliniva.tenancy.ProfissionalService;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -70,9 +73,19 @@ class AgendaServiceTest {
     private HorarioAtendimentoRepository horarioRepository;
     @Mock
     private ClinicaRepository clinicaRepository;
+    @Mock
+    private ProfissionalService profissionalService;
+
+    /** Profissional fallback: desde a migration 08 o expediente é por pessoa. */
+    private static final Profissional GERAL = profissional("Geral");
 
     @InjectMocks
     private AgendaService agendaService;
+
+    @BeforeEach
+    void setUpProfissionalGeral() {
+        lenient().when(profissionalService.garantirGeral(CLINICA)).thenReturn(GERAL);
+    }
 
     @BeforeEach
     void setUpClock() {
@@ -97,10 +110,20 @@ class AgendaServiceTest {
         return servico;
     }
 
+    private static Profissional profissional(String nome) {
+        Profissional p = new Profissional();
+        p.setClinica(CLINICA);
+        p.setNome(nome);
+        p.setAtivo(true);
+        org.springframework.test.util.ReflectionTestUtils.setField(p, "id", UUID.randomUUID());
+        return p;
+    }
+
     private HorarioAtendimento horario(int dia, String abertura, String fechamento, boolean ativo) {
         HorarioAtendimento h = new HorarioAtendimento();
-        h.setId(new HorarioAtendimentoId(CLINICA.getId(), dia));
+        h.setId(new HorarioAtendimentoId(CLINICA.getId(), GERAL.getId(), dia));
         h.setClinica(CLINICA);
+        h.setProfissional(GERAL);
         h.setAbertura(LocalTime.parse(abertura));
         h.setFechamento(LocalTime.parse(fechamento));
         h.setAtivo(ativo);
@@ -320,10 +343,10 @@ class AgendaServiceTest {
 
     @Test
     void deveAtualizarHorariosComUpsert() {
-        HorarioAtendimentoId idExistente = new HorarioAtendimentoId(CLINICA.getId(), 1);
+        HorarioAtendimentoId idExistente = new HorarioAtendimentoId(CLINICA.getId(), GERAL.getId(), 1);
         HorarioAtendimento existente = horario(1, "08:00", "18:00", true);
         when(horarioRepository.findById(idExistente)).thenReturn(Optional.of(existente));
-        when(horarioRepository.findById(new HorarioAtendimentoId(CLINICA.getId(), 2)))
+        when(horarioRepository.findById(new HorarioAtendimentoId(CLINICA.getId(), GERAL.getId(), 2)))
                 .thenReturn(Optional.empty());
         when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
                 .thenReturn(List.of(existente));
