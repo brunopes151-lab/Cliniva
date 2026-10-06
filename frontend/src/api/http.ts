@@ -2,7 +2,9 @@ import { sessionStore } from '@/lib/session'
 
 const VITE_API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
-const BASE_URL = (VITE_API_URL || (import.meta.env.PROD ? 'https://cliniva-hrpj.onrender.com/api' : '/api')).replace(/\/$/, '')
+// Sem VITE_API_URL, usa /api no mesmo domínio (proxy do Vite em dev). Em
+// produção com backend em outro domínio, VITE_API_URL é obrigatória.
+const BASE_URL = (VITE_API_URL || '/api').replace(/\/$/, '')
 
 export class ApiError extends Error {
   status: number

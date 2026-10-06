@@ -7,13 +7,11 @@ import { TextField } from '@/components/ui/TextField'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 
-const ADMIN_EMAIL = 'paulovictorpinheiro998663264@gmail.com'
-
 export function AdminLoginPage() {
   const { usuario, carregando, erroCarregamento } = useAuth()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState(ADMIN_EMAIL)
+  const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -61,7 +59,7 @@ export function AdminLoginPage() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="admin@cliniva.com"
+          placeholder="admin@exemplo.com"
         />
         <TextField
           label="Senha *"
