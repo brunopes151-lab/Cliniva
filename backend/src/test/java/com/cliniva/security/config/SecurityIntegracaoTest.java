@@ -20,7 +20,7 @@ import com.cliniva.tenancy.Papel;
 import com.cliniva.tenancy.Usuario;
 import com.cliniva.tenancy.UsuarioRepository;
 
-@SpringBootTest
+@SpringBootTest(properties = "cliniva.onboarding-publico.ativo=true")
 @AutoConfigureMockMvc
 class SecurityIntegracaoTest {
 
@@ -80,7 +80,7 @@ class SecurityIntegracaoTest {
     void onboardingNaoDeveRebaixarContaAdmin() throws Exception {
         // simula o ADMIN master do seed da migration 03: sem clínica, papel ADMIN
         Usuario admin = new Usuario();
-        admin.setEmail("paulovictorpinheiro998663264@gmail.com");
+        admin.setEmail("admin@exemplo.test");
         admin.setNome("Administrador Cliniva");
         admin.setPapel(Papel.ADMIN);
         admin.setAtivo(true);
@@ -92,7 +92,7 @@ class SecurityIntegracaoTest {
                                 {
                                   "nomeClinica": "Clínica Tentativa",
                                   "nomeResponsavel": "Tentativa",
-                                  "email": "paulovictorpinheiro998663264@gmail.com"
+                                  "email": "admin@exemplo.test"
                                 }"""))
                 .andExpect(status().isForbidden());
     }
