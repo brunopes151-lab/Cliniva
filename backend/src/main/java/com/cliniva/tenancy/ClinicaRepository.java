@@ -1,5 +1,6 @@
 package com.cliniva.tenancy;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +20,9 @@ public interface ClinicaRepository extends JpaRepository<Clinica, UUID> {
     Optional<Clinica> findBySlugAndAtivaTrue(String slug);
 
     boolean existsBySlug(String slug);
+
+    /** Até duas clínicas ativas: basta para saber se a instalação tem uma só. */
+    List<Clinica> findTop2ByAtivaTrueOrderByCriadaEmAsc();
 
     boolean existsByNome(String nome);
 

@@ -28,6 +28,9 @@ public class Clinica {
     private String nome;
     @Column(name = "slug", nullable = false)
     private String slug;
+    /** Logo como data URL (png/jpeg/webp). Null = o frontend mostra o símbolo neutro. */
+    @Column(name = "logo_data_url", columnDefinition = "text")
+    private String logoDataUrl;
     @Column(name = "ativa", nullable = false)
     private boolean ativa = true;
     @Column(name = "criada_em", nullable = false, updatable = false)

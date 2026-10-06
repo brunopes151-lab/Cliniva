@@ -142,6 +142,8 @@ assert_status GET  /api/agenda/link                                401 "link pú
 assert_status GET  /api/me                                         401 "perfil exige auth"
 # 404 = onboarding público desligado por padrão (ONBOARDING_PUBLICO_ATIVO)
 assert_status POST /api/public/onboarding                           404 "onboarding público desligado"
+# 200 = marca pública (nome e logo da tela de login)
+assert_status GET  /api/public/marca                                200 "marca pública"
 # 200 = rota de build pública (é o que revela deploy falho)
 assert_status GET  /api/saude/build                                200 "build info pública"
 
