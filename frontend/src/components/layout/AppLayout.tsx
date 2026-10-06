@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { KeyRound, LogOut, Menu, Moon, Sun } from 'lucide-react'
+import { MarcaSimbolo } from '@/components/marca/MarcaSimbolo'
 import { useAuth } from '@/hooks/useAuth'
+import { useMarca } from '@/hooks/useMarca'
 import { useTheme } from '@/hooks/useTheme'
 
 function PageTransition() {
@@ -16,6 +18,7 @@ function PageTransition() {
 export function AppLayout() {
   const { theme, toggleTheme } = useTheme()
   const { usuario, sair } = useAuth()
+  const { marca } = useMarca()
   const navigate = useNavigate()
   const [menuAberto, setMenuAberto] = useState(false)
 
@@ -26,6 +29,9 @@ export function AppLayout() {
     { to: '/agenda', label: 'Agenda' },
     { to: '/estoque', label: 'Estoque' },
     { to: '/atendimentos', label: 'Atendimentos' },
+    ...(usuario?.papel === 'OWNER' || usuario?.papel === 'ADMIN'
+      ? [{ to: '/configuracoes', label: 'Configurações' }]
+      : []),
     ...(usuario?.papel === 'ADMIN' ? [{ to: '/admin', label: 'Admin' }] : []),
   ]
 
@@ -77,8 +83,8 @@ export function AppLayout() {
         ].join(' ')}
       >
         <NavLink to="/dashboard" end className="flex h-20 items-center gap-3 border-b border-white/10 px-5">
-          <img src="/Cliniva-Simbolo.png" alt="Símbolo Clíniva" className="h-8 w-8 object-contain" />
-          <span className="font-display text-2xl text-bone">Clíniva</span>
+          <MarcaSimbolo marca={marca} />
+          <span className="truncate font-display text-2xl text-bone">{marca.nome}</span>
         </NavLink>
         <nav className="flex-1 py-6">
           {navItems.map((item, index) => (
@@ -117,10 +123,7 @@ export function AppLayout() {
         </nav>
         <div className="border-t border-white/10 px-5 py-5">
           <p className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.18em] text-bone/30">
-            Clíniva — Gestão
-          </p>
-          <p className="font-mono text-[10px] uppercase leading-relaxed tracking-[0.18em] text-bone/30">
-            MVP · 2026
+            Sistema de gestão
           </p>
         </div>
       </aside>
@@ -136,7 +139,7 @@ export function AppLayout() {
               <Menu size={16} />
             </button>
             <span className="hidden truncate font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft lg:inline">
-              Clíniva — Sistema de gestão
+              {marca.nome} — Sistema de gestão
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-4 lg:gap-6">
@@ -185,7 +188,7 @@ export function AppLayout() {
         <footer className="border-t border-hairline px-4 py-4 lg:px-10">
           <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-1 md:flex-row md:items-center md:gap-4">
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
-              Clíniva · MVP 2026
+              {marca.nome}
             </span>
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
               Cuidado em cada detalhe
