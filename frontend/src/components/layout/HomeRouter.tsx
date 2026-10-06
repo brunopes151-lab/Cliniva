@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import { Spinner } from '@/components/ui/Spinner'
 import { useAuth } from '@/hooks/useAuth'
+import { cadastroPublicoAtivo } from '@/lib/config'
 import { LandingPage } from '@/pages/LandingPage'
 
 export function HomeRouter() {
@@ -18,5 +19,7 @@ export function HomeRouter() {
     return <Navigate to="/dashboard" replace />
   }
 
-  return <LandingPage />
+  // A landing é a página de venda da plataforma; sem cadastro público, a
+  // entrada é o login.
+  return cadastroPublicoAtivo ? <LandingPage /> : <Navigate to="/login" replace />
 }

@@ -16,6 +16,7 @@ import { EstoquePage } from '@/pages/EstoquePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ServicosPage } from '@/pages/ServicosPage'
 import { TrocarSenhaPage } from '@/pages/TrocarSenhaPage'
+import { cadastroPublicoAtivo } from '@/lib/config'
 
 function App() {
   return (
@@ -23,7 +24,10 @@ function App() {
       <Route path="/" element={<HomeRouter />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/login-admin" element={<AdminLoginPage />} />
-      <Route path="/cadastro" element={<CadastroPage />} />
+      <Route
+        path="/cadastro"
+        element={cadastroPublicoAtivo ? <CadastroPage /> : <Navigate to="/login" replace />}
+      />
       <Route path="/agendar/:slug" element={<BookingPage />} />
       <Route
         element={

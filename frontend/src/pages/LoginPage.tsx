@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { cadastroPublicoAtivo } from '@/lib/config'
 
 export function LoginPage() {
   const { usuario, carregando, erroCarregamento } = useAuth()
@@ -72,12 +73,14 @@ export function LoginPage() {
           {enviando ? 'Entrando...' : 'Entrar'}
         </Button>
       </form>
-      <p className="mt-6 text-sm text-ink-soft">
-        Ainda não tem uma clínica?{' '}
-        <Link to="/cadastro" className="text-accent-strong underline-offset-4 hover:underline">
-          Cadastre-se
-        </Link>
-      </p>
+      {cadastroPublicoAtivo && (
+        <p className="mt-6 text-sm text-ink-soft">
+          Ainda não tem uma clínica?{' '}
+          <Link to="/cadastro" className="text-accent-strong underline-offset-4 hover:underline">
+            Cadastre-se
+          </Link>
+        </p>
+      )}
     </AuthShell>
   )
 }
