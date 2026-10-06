@@ -11,13 +11,18 @@ name: migrations
 # Um toggle invisível no painel que falha calado é exatamente o que custou o
 # incidente do `dia_semana`.
 
+# Neste fork o workflow só roda à mão (Actions > migrations > Run workflow),
+# e o padrão é só revisar. Antes dele, configure o secret
+# PRODUCTION_DATABASE_URL apontando para o SEU banco. Push em `production`
+# não aplica mais nada sozinho: com dados de saúde, aplicar em produção é
+# uma decisão explícita.
 on:
-  push:
-    branches: [production]
-  pull_request:
-    # Só mostra o que seria aplicado; não toca em nenhum banco.
-    paths: ['supabase/migrations/**']
   workflow_dispatch:
+    inputs:
+      aplicar:
+        description: 'Aplicar em produção (desmarcado = só mostrar o que seria aplicado)'
+        type: boolean
+        default: false
 
 concurrency:
   group: migrations-producao
@@ -30,7 +35,7 @@ permissions:
 jobs:
   revisar:
     name: Revisar migrations pendentes
-    if: github.event_name == 'pull_request'
+    if: ${{ !inputs.aplicar }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +55,7 @@ jobs:
 
   aplicar:
     name: Aplicar migrations em produção
-    if: github.event_name != 'pull_request'
+    if: ${{ inputs.aplicar }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
