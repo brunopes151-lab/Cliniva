@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useApi } from '@/hooks/useApi'
 import type { AtendimentoResumo, Item } from '@/types'
 import { formatData, formatDataHora, formatMoeda, whatsappLink } from '@/utils/format'
+import { useMarca } from '@/hooks/useMarca'
 
 function StatCell({
   label,
@@ -80,6 +81,7 @@ function noMesCorrente(iso: string): boolean {
 const ESTOQUE_BAIXO_LIMITE = 5
 
 export function DashboardPage() {
+  const { marca } = useMarca()
   const { data: clientes, loading: loadingClientes, error: errorClientes } = useApi(() => clientesApi.listar())
   const { data: servicos, loading: loadingServicos, error: errorServicos } = useApi(() => servicosApi.listar())
   const { data: itens, loading: loadingItens, error: errorItens } = useApi(() => itensApi.listar())
@@ -272,7 +274,7 @@ export function DashboardPage() {
                     <a
                       href={whatsappLink(
                         cliente.telefone,
-                        `Olá ${cliente.nome}! Feliz aniversário! Passando pra desejar tudo de bom — e lembrar que a Clíniva tem um mimo pra você.`,
+                        `Olá ${cliente.nome}! Feliz aniversário! Passando pra desejar tudo de bom — e lembrar que a ${marca.nome} tem um mimo pra você.`,
                       )}
                       target="_blank"
                       rel="noreferrer"

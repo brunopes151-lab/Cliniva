@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
+import { useMarca } from '@/hooks/useMarca'
 
 interface OnboardingResposta {
   clinicaId: string
@@ -15,6 +16,7 @@ interface OnboardingResposta {
 }
 
 export function CadastroPage() {
+  const { marca } = useMarca()
   const { usuario, recarregarPerfil } = useAuth()
   const navigate = useNavigate()
 
@@ -95,7 +97,7 @@ export function CadastroPage() {
       <AuthShell
         kicker="Cadastro"
         title="Quase lá"
-        subtitle={`Enviamos um link de confirmação para ${email}. Confirme seu e-mail e depois entre para começar a usar a Clíniva.`}
+        subtitle={`Enviamos um link de confirmação para ${email}. Confirme seu e-mail e depois entre para começar a usar o sistema da ${marca.nome}.`}
       >
         <Button variant="secondary" onClick={() => navigate('/login')} className="w-full">
           Ir para o login
@@ -129,7 +131,7 @@ export function CadastroPage() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="voce@cliniva.com"
+          placeholder="voce@exemplo.com"
         />
         <TextField
           label="Senha *"

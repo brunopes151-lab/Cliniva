@@ -24,13 +24,15 @@ import type {
   StatusAtendimento,
 } from '@/types'
 import { formatDataHora, formatMoeda, whatsappLink } from '@/utils/format'
+import { useMarca } from '@/hooks/useMarca'
 
 const lembrarLink =
   'inline-flex cursor-pointer items-center justify-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft underline-offset-4 transition duration-150 ease-in-out hover:text-ink hover:underline'
 
 function LembrarLink({ atendimento }: { atendimento: AtendimentoResumo }) {
+  const { marca } = useMarca()
   if (atendimento.status !== 'AGENDADO') return null
-  const mensagem = `Olá ${atendimento.nomeCliente}! Passando para lembrar do seu atendimento na Clíniva em ${formatDataHora(atendimento.dataAtendimento)}.`
+  const mensagem = `Olá ${atendimento.nomeCliente}! Passando para lembrar do seu atendimento na ${marca.nome} em ${formatDataHora(atendimento.dataAtendimento)}.`
   return (
     <a
       href={whatsappLink(atendimento.telefoneCliente, mensagem)}

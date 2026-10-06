@@ -27,6 +27,7 @@ import type {
   StatusAtendimento,
 } from '@/types'
 import { formatDataHora, formatDataLonga, formatMoeda, whatsappLink } from '@/utils/format'
+import { useMarca } from '@/hooks/useMarca'
 
 const DIAS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
@@ -82,7 +83,8 @@ const lembrarLink =
   'inline-flex cursor-pointer items-center justify-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft underline-offset-4 transition duration-150 ease-in-out hover:text-ink hover:underline'
 
 function LembrarLink({ inicio, nome, telefone }: { inicio: string; nome: string; telefone: string }) {
-  const mensagem = `Olá ${nome}! Passando para lembrar do seu atendimento na Clíniva em ${formatDataHora(inicio)}.`
+  const { marca } = useMarca()
+  const mensagem = `Olá ${nome}! Passando para lembrar do seu atendimento na ${marca.nome} em ${formatDataHora(inicio)}.`
   return (
     <a href={whatsappLink(telefone, mensagem)} target="_blank" rel="noreferrer" className={lembrarLink}>
       Lembrar

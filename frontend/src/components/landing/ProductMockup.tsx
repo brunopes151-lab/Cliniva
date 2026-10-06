@@ -1,3 +1,5 @@
+import { useMarca } from '@/hooks/useMarca'
+
 interface StatCellProps {
   label: string
   value: number
@@ -46,13 +48,14 @@ const atendimentos = [
 ]
 
 export function ProductMockup() {
+  const { marca } = useMarca()
   const hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 
   return (
     <div className="animate-fade border border-hairline bg-paper">
       <div className="flex items-center justify-between gap-4 border-b border-hairline px-5 py-3">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
-          Clíniva — Dashboard
+          {marca.nome} — Dashboard
         </p>
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft">
           hoje {hoje}

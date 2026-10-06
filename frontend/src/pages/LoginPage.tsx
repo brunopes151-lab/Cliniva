@@ -58,7 +58,7 @@ export function LoginPage() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="voce@cliniva.com"
+          placeholder="voce@exemplo.com"
         />
         <TextField
           label="Senha *"

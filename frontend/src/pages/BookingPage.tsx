@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { bookingApi } from '@/api/bookingApi'
+import { marcaApi } from '@/api/marcaApi'
+import type { Marca } from '@/api/marcaApi'
+import { MarcaSimbolo } from '@/components/marca/MarcaSimbolo'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
 import { Spinner } from '@/components/ui/Spinner'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
+import { MARCA_PADRAO } from '@/lib/marca'
 import type { BookingResult, DisponibilidadeDia, ServicoPublico } from '@/types'
 import { formatDataHora, formatDataLonga, formatMoeda } from '@/utils/format'
 
@@ -42,6 +46,10 @@ export function BookingPage() {
     [slug],
   )
 
+  // A marca é a da clínica do link, não a da instalação.
+  const { data: marcaClinica } = useApi<Marca>(() => marcaApi.publica(slug), [slug])
+  const marca = marcaClinica ?? MARCA_PADRAO
+
   const [servicoId, setServicoId] = useState('')
   const [data, setData] = useState(hojeISO())
   const [horarioSelecionado, setHorarioSelecionado] = useState('')
@@ -62,7 +70,6 @@ export function BookingPage() {
     [slug, data, servicoId],
   )
 
-  const clinicaNome = servicos?.[0]?.clinica ?? 'Clíniva'
   const servicoEscolhido = servicos?.find((s) => s.id === servicoId)
 
   // "Fazer novo agendamento" precisa zerar o formulário inteiro: manter o
@@ -157,9 +164,12 @@ export function BookingPage() {
   return (
     <div className="min-h-screen bg-ivory">
       <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 py-8">
-        <span className="font-display text-xl font-medium text-ink">Cliniva</span>
+        <span className="flex items-center gap-3">
+          <MarcaSimbolo marca={marca} />
+          <span className="font-display text-xl font-medium text-ink">{marca.nome}</span>
+        </span>
         <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-soft">
-          {clinicaNome}
+          Agendamento online
         </span>
       </header>
 

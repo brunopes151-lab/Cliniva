@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { ProductMockup } from '@/components/landing/ProductMockup'
+import { useMarca } from '@/hooks/useMarca'
 
 export function LandingHero() {
+  const { marca } = useMarca()
   return (
     <section className="border-b border-hairline">
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 px-4 py-16 md:px-6 lg:grid-cols-12 lg:gap-16 lg:px-10 lg:py-24">
@@ -18,7 +20,7 @@ export function LandingHero() {
           </h1>
           <p className="mt-5 max-w-xl animate-rise text-base leading-relaxed text-ink-soft" style={{ animationDelay: '80ms' }}>
             O caderno marca, o WhatsApp lembra e a planilha soma — até falhar no dia
-            que mais importa. A Clíniva junta agenda, CRM, financeiro e estoque numa
+            que mais importa. A {marca.nome} junta agenda, CRM, financeiro e estoque numa
             tela só, feita para a rotina da clínica de estética pequena.
           </p>
           <div

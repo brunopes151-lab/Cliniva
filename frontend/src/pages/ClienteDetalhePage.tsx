@@ -20,6 +20,7 @@ import {
   origemLabel,
   whatsappLink,
 } from '@/utils/format'
+import { useMarca } from '@/hooks/useMarca'
 
 const microLabel = 'text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft'
 
@@ -54,6 +55,7 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 }
 
 export function ClienteDetalhePage() {
+  const { marca } = useMarca()
   const { id } = useParams<{ id: string }>()
   const {
     data: historico,
@@ -86,7 +88,7 @@ export function ClienteDetalhePage() {
   }
 
   const cliente = historico.cliente
-  const mensagemFollowUp = `Olá ${cliente.nome}! Tudo bem? Passando só pra saber se precisa agendar um horário na Clíniva.`
+  const mensagemFollowUp = `Olá ${cliente.nome}! Tudo bem? Passando só pra saber se precisa agendar um horário na ${marca.nome}.`
 
   const adicionarNota = async () => {
     if (!id || !novaNota.trim()) return

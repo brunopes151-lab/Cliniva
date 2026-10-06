@@ -1,3 +1,5 @@
+import { useMarca } from '@/hooks/useMarca'
+
 interface ProblemaProps {
   n: string
   titulo: string
@@ -36,6 +38,7 @@ const problemas: ProblemaProps[] = [
 ]
 
 export function ProblemsSection() {
+  const { marca } = useMarca()
   return (
     <section className="border-b border-hairline bg-paper">
       <div className="mx-auto w-full max-w-6xl px-4 py-16 md:px-6 lg:px-10 lg:py-24">
@@ -64,7 +67,7 @@ export function ProblemsSection() {
               </div>
               <div className="mt-4 border-l border-hairline pl-4">
                 <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent-strong">
-                  Na Clíniva
+                  Na {marca.nome}
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-ink">{problema.depois}</p>
               </div>

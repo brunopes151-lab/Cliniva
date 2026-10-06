@@ -1,3 +1,5 @@
+import { useMarca } from '@/hooks/useMarca'
+
 interface ItemProps {
   label: string
   children: string
@@ -13,6 +15,7 @@ function TrustItem({ label, children }: ItemProps) {
 }
 
 export function TrustSection() {
+  const { marca } = useMarca()
   return (
     <section className="border-b border-hairline bg-paper">
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-12 px-4 py-16 md:px-6 lg:grid-cols-12 lg:gap-16 lg:px-10 lg:py-24">
@@ -24,7 +27,7 @@ export function TrustSection() {
             Construído por quem entende a rotina da clínica pequena.
           </h2>
           <p className="mt-5 max-w-xl text-sm leading-relaxed text-ink-soft">
-            A Clíniva é um produto novo, feito em iterações curtas com donos e donas
+            A {marca.nome} é um produto novo, feito em iterações curtas com donos e donas
             de clínica — não uma plataforma genérica. O que está no ar foi construído
             ouvindo problemas reais: agenda esquecida, cliente sem follow-up, estoque
             sem aviso. Sua clínica ajuda a definir o que vem a seguir.
