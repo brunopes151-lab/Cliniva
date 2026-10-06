@@ -3,7 +3,8 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'cliniva-backend'
+# Troque pelo nome do SEU app no Fly.io.
+app = 'minha-clinica-backend'
 primary_region = 'gru'
 kill_signal = 'SIGINT'
 kill_timeout = '5s'

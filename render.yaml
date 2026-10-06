@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: cliniva-backend
+    name: minha-clinica-backend
     runtime: docker
     rootDir: backend
     branch: main
@@ -12,8 +12,13 @@ services:
         value: 8080
       - key: JAVA_TOOL_OPTIONS
         value: -XX:MaxRAMPercentage=50
+      # Domínio exato do seu frontend (ex.: https://minha-clinica.vercel.app).
+      # Nunca um curinga como https://*.vercel.app: qualquer site na Vercel
+      # poderia chamar a API com o token de quem estiver logado.
       - key: CLINIVA_CORS_ORIGIN
-        value: https://*.vercel.app
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        sync: false
       - key: SPRING_DATASOURCE_URL
         sync: false
       - key: SPRING_DATASOURCE_USER

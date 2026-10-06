@@ -6,6 +6,11 @@
 -- 20260909000006_agenda_hardening +
 -- 20260909000007_dia_semana_integer
 -- Para USO MANUAL (SQL Editor do Supabase) em banco NOVO (vazio).
+--
+-- ATENÇÃO: este arquivo NÃO inclui a migration 08 (profissional) nem as
+-- seguintes, e o backend não sobe sem elas. Prefira aplicar
+-- supabase/migrations/ em ordem (supabase db push). Se usar este arquivo,
+-- aplique depois as migrations a partir da 08.
 -- =====================================================================
 
 -- ============ DOMÍNIO (baseline) ============
@@ -153,11 +158,8 @@ CREATE INDEX idx_atendimento_clinica ON atendimento (clinica_id);
 
 -- ============ SEED ADMINISTRAÇÃO ============
 
--- usuário administrador da plataforma (o vínculo com a identidade do Supabase
--- acontece no primeiro login, quando o supabase_user_id é preenchido)
-INSERT INTO usuario (id, papel, ativo, nome, email, criado_em, clinica_id)
-VALUES ('00000000-0000-0000-0000-000000000002', 'ADMIN', TRUE, 'Administrador Cliniva',
-        'paulovictorpinheiro998663264@gmail.com', now(), NULL);
+-- Sem ADMIN fixo: o administrador da plataforma é criado pelo backend a
+-- partir de ADMIN_BOOTSTRAP_EMAIL (ver 20261006000001_neutralizar_seed_admin).
 
 -- ============ RESUMO DO DIA (migration 04) ============
 
