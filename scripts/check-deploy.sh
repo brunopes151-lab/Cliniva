@@ -10,11 +10,11 @@
 # Uso:
 #   scripts/check-deploy.sh                      # compara com origin/main
 #   scripts/check-deploy.sh abc1234              # compara com um commit
-#   API=https://api.exemplo.com scripts/check-deploy.sh
+#   API=https://api.exemplo.com scripts/check-deploy.sh   (API é obrigatória)
 # =====================================================================
 set -euo pipefail
 
-API="${API:-https://cliniva-hrpj.onrender.com}"
+API="${API:?defina API com a URL do seu backend, ex.: API=https://api.exemplo.com}"
 EXPECTED="${1:-}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

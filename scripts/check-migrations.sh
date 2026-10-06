@@ -140,8 +140,8 @@ assert_status POST /api/public/booking/slug-inexistente            400 "booking 
 assert_status GET  /api/agenda/horarios                            401 "agenda exige auth"
 assert_status GET  /api/agenda/link                                401 "link público exige auth"
 assert_status GET  /api/me                                         401 "perfil exige auth"
-# 400 = onboarding público acessível e validando
-assert_status POST /api/public/onboarding                           400 "onboarding público acessível"
+# 404 = onboarding público desligado por padrão (ONBOARDING_PUBLICO_ATIVO)
+assert_status POST /api/public/onboarding                           404 "onboarding público desligado"
 # 200 = rota de build pública (é o que revela deploy falho)
 assert_status GET  /api/saude/build                                200 "build info pública"
 
