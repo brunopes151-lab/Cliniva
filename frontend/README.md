@@ -147,7 +147,9 @@ Movimento **sóbrio**, sem dependências:
 
 - **`/login`** — acesso com e-mail e senha (Supabase Auth).
 - **`/cadastro`** — auto-cadastro de clínica: cria a conta no Supabase,
-  registra a clínica + responsável OWNER e entra no painel.
+  registra a clínica + responsável OWNER e entra no painel. Só existe com
+  `VITE_CADASTRO_PUBLICO=true` (e `ONBOARDING_PUBLICO_ATIVO=true` no backend);
+  desligado, `/` e `/cadastro` levam ao login.
 - **`/trocar-senha`** — atualiza a senha da conta autenticada.
 - **`/admin`** *(somente ADMIN)* — clínicas, responsáveis, reset de senha,
   ativar/desativar e métricas; **modo suporte** para acessar como outra clínica

@@ -3,6 +3,11 @@
 Sistema de gestão para clínica de estética de pequeno porte —
 agenda, clientes, serviços, controle de estoque e financeiro.
 
+## Origem
+
+Este repositório é uma adaptação do [Cliniva](https://github.com/paulovpinheiroo/cliniva),
+de Paulo Victor Pinheiro, distribuído sob a licença MIT (ver [`LICENSE`](LICENSE)).
+
 ## Contexto
 
 Desenvolvido para resolver um problema real (sistema de gestão
@@ -78,8 +83,11 @@ mvn spring-boot:run
 ```
 
 A migration `20260909000003_seed_administracao.sql` cria a **Clínica
-Padrão** e o usuário **ADMIN master**
-(`paulovictorpinheiro998663264@gmail.com`), usado no painel `/admin`.
+Padrão**. O ADMIN que ela também criava é desativado pela migration
+`20261006000001_neutralizar_seed_admin.sql`: o administrador da plataforma
+(painel `/admin`) é criado na subida do backend a partir de
+`ADMIN_BOOTSTRAP_EMAIL`. Crie a conta com o mesmo e-mail no Supabase
+(Authentication → Users) e entre por `/login-admin`.
 
 Executar os testes (109 unit/integration tests, usa H2 em memória — não precisa de banco):
 
@@ -102,7 +110,8 @@ npm run dev
 
 O Vite encaminha `/api/*` para o backend (`localhost:8080`) durante o
 desenvolvimento. Com auth ativo, todas as rotas exigem login — crie uma
-clínica em `/cadastro` (auto-registro) ou use a conta admin master.
+clínica e o responsável pelo painel `/admin` (o auto-cadastro em `/cadastro`
+fica desligado, ver `ONBOARDING_PUBLICO_ATIVO`).
 
 Detalhes completos (estrutura, tema, animações, como criar páginas):
 [`frontend/README.md`](frontend/README.md).
@@ -128,9 +137,8 @@ ser reavaliado depois de mudanças, use `docker compose up -d --build` de novo.
 > Com LLM no resumo do dia: exporte `LLM_PROVIDER` e `LLM_GEMINI_API_KEY`
 > (ou `LLM_GROQ_API_KEY`) no serviço `backend` do `docker-compose.yml`.
 
-Fazendo login com uma conta já vinculada a uma clínica no banco remoto, o
-primeiro acesso cria a clínica local via onboarding (`/cadastro`); a conta
-**ADMIN master** (seed da migration `03`) funciona sempre em `/admin`.
+O administrador criado por `ADMIN_BOOTSTRAP_EMAIL` funciona sempre em
+`/admin`, onde se cria a clínica e o responsável.
 
 ### 5. Variáveis de ambiente do backend
 
@@ -141,6 +149,8 @@ primeiro acesso cria a clínica local via onboarding (`/cadastro`); a conta
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (criar usuários/reset de senha) |
 | `SUPABASE_JWT_SECRET` | Segredo do JWT (fallback HS256) |
 | `CLINIVA_CORS_ORIGIN` | Origem permitida no CORS (default `http://localhost:5173`) |
+| `ADMIN_BOOTSTRAP_EMAIL` | E-mail do administrador da plataforma, criado na subida se não existir |
+| `ONBOARDING_PUBLICO_ATIVO` | `true` liga o auto-cadastro público de clínica. Padrão `false` |
 | `LLM_PROVIDER` | `gemini` ou `groq`. **Vazio = nenhuma chamada externa** (resumo por template) |
 | `LLM_GEMINI_API_KEY` | Chave da API Gemini (só se `LLM_PROVIDER=gemini`) |
 | `LLM_GEMINI_MODEL` | Default `gemini-3.5-flash-lite` |
@@ -187,21 +197,22 @@ Erros seguem o formato `{"status", "mensagem", "erros"}` (400/401/403/404/409/42
 ### Supabase (banco + auth)
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. **Integração com GitHub**: mapeie o repositório (Working directory
-   `supabase`) e a **Production branch = `production`**. Ao dar merge
-   em `production`, a integração aplica `supabase/migrations/` no banco
-   de produção automaticamente.
+   Para dados de saúde (LGPD), escolha a região **South America (São Paulo)**.
+2. **Migrations em produção**: neste fork nada é aplicado automaticamente.
+   Configure o secret `PRODUCTION_DATABASE_URL` no GitHub e rode o workflow
+   `migrations` à mão (Actions → migrations → Run workflow): desmarcado ele
+   só mostra o que seria aplicado; marcando "Aplicar" ele aplica.
    - ⚠️ Migrations são aplicadas **na ordem do timestamp** e **não devem ser
      editadas depois de aplicadas**: corrija sempre criando a próxima.
-   - Banco novo por SQL manual: use `supabase/schema.sql` (schema
-     consolidado das migrations 01→06).
+   - Banco novo por SQL manual: prefira aplicar `supabase/migrations/` em
+     ordem. `supabase/schema.sql` consolida só até a 07.
 3. Em **Project Settings → API** copie: URL do projeto, `anon key`,
    `service_role key` e **Project Settings → Database → Connection URI`.
 4. Driver JDBC: `jdbc:postgresql://db.<ref>.supabase.co:5432/postgres?sslmode=require`
    (usuário `postgres` e a senha do banco).
 
-> **Ordem obrigatória no deploy:** primeiro dê merge em `production`
-> (aplica as migrations), **depois** o merge em `main` — o backend sobe com
+> **Ordem obrigatória no deploy:** primeiro aplique as migrations (workflow
+> `migrations`), **depois** o merge em `main` — o backend sobe com
 > `ddl-auto=validate` e exige o schema já existente. Inverter a ordem derruba
 > o backend.
 >
@@ -224,7 +235,7 @@ O deploy é declarado via `render.yaml` (Blueprint, raiz do repo). Push na
 # render.yaml (versão resumida — ver arquivo real)
 services:
   - type: web
-    name: cliniva-backend        # URL: https://cliniva-hrpj.onrender.com
+    name: minha-clinica-backend  # URL: a que o Render gerar para o seu serviço
     runtime: docker
     rootDir: backend
     plan: free
@@ -233,43 +244,35 @@ services:
 
 Secrets preenchidos no painel do serviço (Environment), **fora do git**:
 `SPRING_DATASOURCE_URL/USER/PASSWORD`, `SUPABASE_URL`,
-`SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`. Fixas via render.yaml:
-`PORT=8080`, `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=50`,
-`CLINIVA_CORS_ORIGIN=https://*.vercel.app`.
+`SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_BOOTSTRAP_EMAIL` e
+`CLINIVA_CORS_ORIGIN` (o domínio exato do seu frontend, nunca um curinga).
+Fixas via render.yaml: `PORT=8080`, `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=50`.
 
 > **Pooler IPv4 (obrigatório no Render):** a conexão direta do Supabase é
 > IPv6-only e o free do Render não tem IPv6. Use o Shared Pooler (session,
 > porta 5432): `jdbc:postgresql://aws-0-us-west-2.pooler.supabase.com:5432/postgres`
-> com usuário `postgres.<project-ref>`. Ver `cliniva-vault/03 - Deploy/Render`.
+> com usuário `postgres.<project-ref>` (troque a região pela do seu projeto).
 >
 > **Free tier dorme:** o pinger do UptimeRobot (health a cada 10 min)
 > mantém a instância acordada.
 
-Health check: `GET https://cliniva-hrpj.onrender.com/actuator/health`.
+Health check: `GET https://<seu-backend>/actuator/health`. Para conferir se
+o commit no ar é o esperado: `API=https://<seu-backend> scripts/check-deploy.sh`.
 
-> ⚠️ O serviço no painel do Render se chama `cliniva-backend` (ver
-> `render.yaml`), mas a URL é `cliniva-hrpj.onrender.com`. São nomes
-> diferentes — não conclua que o deploy falhou só porque não batem.
-> O que vale é o **log do deploy**: se o processo morre, o Render continua
+> ⚠️ O nome do serviço no painel do Render e a URL gerada podem ser
+> diferentes. O que vale é o **log do deploy**: se o processo morre, o Render continua
 > servindo o container antigo e o health check continua respondendo 200.
 
 ### Frontend (Vercel)
 
 1. Importe o repositório na Vercel (framework detectado: Vite), `dist` de saída.
-2. Configure as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`.
+2. Configure as variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` e
+   `VITE_API_URL` (URL do seu backend terminando em `/api`).
 3. Adicione o domínio da Vercel em `CLINIVA_CORS_ORIGIN` do backend.
 
 O arquivo `vercel.json` faz o rewrite SPA para `index.html`.
 
-**Domínio de produção:** `https://cliniva-wheat.vercel.app`
-
-> ⚠️ Esse é o domínio real do projeto. O `cliniva.vercel.app` é um domínio
-> antigo/orfão, servido por um projeto Vercel anterior — ele **não** recebe
-> deploy e continua servindo um bundle antigo. Ao validar a agenda em
-> produção, use sempre `cliniva-wheat.vercel.app`.
-
-Link público de booking de uma clínica:
-`https://cliniva-wheat.vercel.app/agendar/<slug>`.
+Link público de booking de uma clínica: `https://<seu-frontend>/agendar/<slug>`.
 
 ### CI
 

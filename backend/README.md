@@ -102,6 +102,8 @@ Alternativa com Docker Compose (na raiz): `docker compose up -d --build`
 | `SUPABASE_URL` | vazio (JWKS + API admin do Supabase) |
 | `SUPABASE_SERVICE_ROLE_KEY` | vazio (criar usuário / reset de senha) |
 | `CLINIVA_CORS_ORIGIN` | `http://localhost:5173` |
+| `ADMIN_BOOTSTRAP_EMAIL` | vazio (e-mail do ADMIN da plataforma, criado na subida) |
+| `ONBOARDING_PUBLICO_ATIVO` | `false` (auto-cadastro público de clínica) |
 | `cliniva.zona` | `America/Sao_Paulo` (relógio da agenda) |
 
 ## Rodar
