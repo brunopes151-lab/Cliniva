@@ -27,6 +27,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ClinicaContext {
 
+    /** Clínica semeada pela migration 02. Por id, porque o nome é editável. */
+    public static final UUID CLINICA_PADRAO_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     private final ClinicaRepository clinicaRepository;
 
     public Clinica obterClinicaAtual() {
@@ -81,7 +84,7 @@ public class ClinicaContext {
     }
 
     private Clinica clinicaPadrao() {
-        return clinicaRepository.findByNome("Clínica Padrão")
+        return clinicaRepository.findById(CLINICA_PADRAO_ID)
                 .orElseThrow(() -> new AcessoNaoPermitidoException("Nenhuma clínica disponível"));
     }
 
