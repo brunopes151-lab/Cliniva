@@ -11,9 +11,14 @@ public record UsuarioPrincipal(
         Papel papel,
         Clinica clinica,
         String nome,
-        String email) {
+        String email,
+        UUID profissionalId) {
 
     public boolean ehAdmin() {
         return papel == Papel.ADMIN;
+    }
+
+    public boolean ehProfissional() {
+        return papel == Papel.PROFISSIONAL;
     }
 }

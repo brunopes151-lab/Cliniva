@@ -46,7 +46,7 @@ class ClinicaMarcaServiceTest {
     }
 
     private static UsuarioPrincipal principal(Papel papel, Clinica clinica) {
-        return new UsuarioPrincipal(UUID.randomUUID(), "sub", papel, clinica, "Pessoa", "p@exemplo.test");
+        return new UsuarioPrincipal(UUID.randomUUID(), "sub", papel, clinica, "Pessoa", "p@exemplo.test", null);
     }
 
     @Test

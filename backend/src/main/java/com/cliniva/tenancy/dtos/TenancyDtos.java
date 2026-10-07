@@ -36,6 +36,6 @@ public final class TenancyDtos {
     }
 
     public record MeResponseDTO(UUID id, String nome, String email, Papel papel, UUID clinicaId,
-            String clinicaNome) {
+            String clinicaNome, UUID profissionalId) {
     }
 }

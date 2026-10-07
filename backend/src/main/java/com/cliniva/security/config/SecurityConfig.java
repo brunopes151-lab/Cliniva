@@ -8,6 +8,7 @@ import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -16,6 +17,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.cors.CorsConfiguration;
@@ -32,6 +34,10 @@ import jakarta.servlet.http.HttpServletResponse;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private static final String[] ADMINISTRACAO = { "ADMIN", "OWNER" };
+
+    private static final String[] EQUIPE_ADMINISTRATIVA = { "ADMIN", "OWNER", "RECEPCAO" };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAutenticacaoFilter jwtFiltro)
             throws Exception {
@@ -40,7 +46,9 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sessao -> sessao
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(excecoes -> excecoes.authenticationEntryPoint(naoAutenticado()))
+                .exceptionHandling(excecoes -> excecoes
+                        .authenticationEntryPoint(naoAutenticado())
+                        .accessDeniedHandler(semPermissao()))
                 .authorizeHttpRequests(autoriza -> autoriza
                         // Defesa em profundidade. O dispatch de erro do
                         // container NÃO passa pelo JwtAutenticacaoFilter
@@ -58,6 +66,26 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/public/**", "/api/saude/**", "/actuator/health").permitAll()
+                        // Configuração da clínica: só o administrador da
+                        // clínica (OWNER) e o ADMIN da plataforma.
+                        .requestMatchers("/api/usuarios/**").hasAnyRole(ADMINISTRACAO)
+                        .requestMatchers(HttpMethod.GET, "/api/profissionais/**", "/api/especialidades/**",
+                                "/api/servicos/**", "/api/agenda/horarios", "/api/clinica/marca").authenticated()
+                        .requestMatchers("/api/profissionais/**", "/api/especialidades/**", "/api/servicos/**",
+                                "/api/agenda/horarios", "/api/clinica/**").hasAnyRole(ADMINISTRACAO)
+                        // Recepção e administração. O profissional não mexe em
+                        // cadastro de paciente, estoque nem no resumo financeiro.
+                        .requestMatchers("/api/resumo-do-dia/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
+                        .requestMatchers(HttpMethod.GET, "/api/items/**").authenticated()
+                        .requestMatchers("/api/items/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
+                        .requestMatchers(HttpMethod.POST, "/api/clientes/*/notas").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/clientes/*/notas/*").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/clientes").hasAnyRole(EQUIPE_ADMINISTRATIVA)
+                        .requestMatchers(HttpMethod.PUT, "/api/clientes/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
+                        .requestMatchers(HttpMethod.DELETE, "/api/clientes/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
+                        // O resto (agenda, atendimentos, leitura de pacientes) é
+                        // de toda a equipe; o PROFISSIONAL é limitado aos
+                        // próprios dados dentro dos serviços.
                         .requestMatchers("/api/**").authenticated())
                 .addFilterBefore(jwtFiltro, UsernamePasswordAuthenticationFilter.class);
         return http.build();
@@ -84,6 +112,11 @@ public class SecurityConfig {
         return (HttpServletRequest request, HttpServletResponse response,
                 org.springframework.security.core.AuthenticationException ex)
                 -> escreverJson(response, HttpStatus.UNAUTHORIZED, "Autenticação necessária");
+    }
+
+    private AccessDeniedHandler semPermissao() {
+        return (request, response, ex) -> escreverJson(response, HttpStatus.FORBIDDEN,
+                "Seu perfil não tem acesso a esta função");
     }
 
     private void escreverJson(HttpServletResponse response, HttpStatus status, String mensagem)

@@ -24,6 +24,7 @@ public class AuthController {
         }
         return new MeResponseDTO(principal.id(), principal.nome(), principal.email(), principal.papel(),
                 principal.clinica() != null ? principal.clinica().getId() : null,
-                principal.clinica() != null ? principal.clinica().getNome() : null);
+                principal.clinica() != null ? principal.clinica().getNome() : null,
+                principal.profissionalId());
     }
 }

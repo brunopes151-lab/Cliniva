@@ -8,10 +8,10 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
-    @EntityGraph(attributePaths = "clinica")
+    @EntityGraph(attributePaths = { "clinica", "profissional" })
     Optional<Usuario> findBySupabaseUserId(String supabaseUserId);
 
-    @EntityGraph(attributePaths = "clinica")
+    @EntityGraph(attributePaths = { "clinica", "profissional" })
     Optional<Usuario> findByEmailIgnoreCase(String email);
 
     default Optional<Usuario> findByEmail(String email) {
@@ -19,6 +19,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
     }
 
     List<Usuario> findByClinica_IdOrderByNomeAsc(UUID clinicaId);
+
+    Optional<Usuario> findByProfissional_Id(UUID profissionalId);
 
     boolean existsByEmail(String email);
 

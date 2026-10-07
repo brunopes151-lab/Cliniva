@@ -93,7 +93,8 @@ public class JwtAutenticacaoFilter extends OncePerRequestFilter {
 
     private void autenticar(Usuario usuario, String token) {
         UsuarioPrincipal principal = new UsuarioPrincipal(usuario.getId(), usuario.getSupabaseUserId(),
-                usuario.getPapel(), usuario.getClinica(), usuario.getNome(), usuario.getEmail());
+                usuario.getPapel(), usuario.getClinica(), usuario.getNome(), usuario.getEmail(),
+                usuario.getProfissional() != null ? usuario.getProfissional().getId() : null);
         var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + usuario.getPapel().name()));
         var authentication = new UsernamePasswordAuthenticationToken(principal, token, authorities);
         SecurityContextHolder.getContext().setAuthentication(authentication);

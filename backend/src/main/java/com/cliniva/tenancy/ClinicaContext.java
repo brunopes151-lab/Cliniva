@@ -1,5 +1,6 @@
 package com.cliniva.tenancy;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -55,6 +56,22 @@ public class ClinicaContext {
     public boolean ehAdmin() {
         UsuarioPrincipal principal = principalAtual();
         return principal != null && principal.ehAdmin();
+    }
+
+    /**
+     * Profissional a que a requisição está limitada: preenchido só quando o
+     * usuário logado tem papel PROFISSIONAL. Os serviços usam isto para
+     * mostrar apenas a própria agenda e os próprios pacientes.
+     */
+    public Optional<UUID> profissionalRestrito() {
+        UsuarioPrincipal principal = principalAtual();
+        if (principal == null || !principal.ehProfissional()) {
+            return Optional.empty();
+        }
+        if (principal.profissionalId() == null) {
+            throw new AcessoNaoPermitidoException("Usuário profissional sem cadastro de profissional");
+        }
+        return Optional.of(principal.profissionalId());
     }
 
     public UsuarioPrincipal principalAtual() {

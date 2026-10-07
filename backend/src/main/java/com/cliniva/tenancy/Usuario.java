@@ -42,6 +42,13 @@ public class Usuario {
     private String nome;
     @Column(name = "email", nullable = false, unique = true)
     private String email;
+    /**
+     * Pessoa que atende ligada a este login. Obrigatório para PROFISSIONAL
+     * (é o que limita o que ele vê), opcional para OWNER que também atende.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "profissional_id")
+    private Profissional profissional;
     @Column(name = "criado_em", nullable = false, updatable = false)
     private Instant criadoEm;
 
