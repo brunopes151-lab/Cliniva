@@ -85,6 +85,9 @@ DECLARE
     servico_regra uuid;
     pacote_regra uuid;
     pc_regra uuid;
+    modelo_regra uuid := gen_random_uuid();
+    registro_regra uuid := gen_random_uuid();
+    autor_regra uuid := gen_random_uuid();
     recusou boolean;
 BEGIN
     INSERT INTO clinica (id, nome, slug, ativa, criada_em) VALUES
@@ -176,10 +179,75 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN recusou := true;
     END;
     IF NOT recusou THEN RAISE EXCEPTION 'movimento de pacote foi apagado'; END IF;
+
+    -- Prontuário: versão não se altera nem se apaga; registro não se apaga.
+    INSERT INTO usuario (id, papel, ativo, nome, email, criado_em, clinica_id)
+    VALUES (autor_regra, 'OWNER', true, 'Autor', 'autor-' || autor_regra || '@exemplo.test', now(), c);
+    INSERT INTO modelo_ficha (id, clinica_id, familia_id, versao, nome, area, tipo, campos)
+    VALUES (modelo_regra, c, gen_random_uuid(), 1, 'Evolução', 'GERAL', 'EVOLUCAO',
+            '[{"id":"descricao","rotulo":"Descrição","tipo":"TEXTO_LONGO","obrigatorio":true}]');
+    INSERT INTO registro_clinico (id, clinica_id, cliente_id, profissional_id, tipo)
+    VALUES (registro_regra, c, paciente, ana, 'EVOLUCAO');
+    INSERT INTO registro_clinico_versao (clinica_id, registro_id, numero, modelo_ficha_id, conteudo, autor_id, autor_nome)
+    VALUES (c, registro_regra, 1, modelo_regra, '{"descricao":"Sessão"}', autor_regra, 'Autor');
+
+    recusou := false;
+    BEGIN
+        UPDATE registro_clinico_versao SET conteudo = '{"descricao":"Outra"}' WHERE registro_id = registro_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'versao de prontuario foi alterada'; END IF;
+
+    recusou := false;
+    BEGIN
+        DELETE FROM registro_clinico_versao WHERE registro_id = registro_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'versao de prontuario foi apagada'; END IF;
+
+    recusou := false;
+    BEGIN
+        DELETE FROM registro_clinico WHERE id = registro_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'registro de prontuario foi apagado'; END IF;
+
+    recusou := false;
+    BEGIN
+        UPDATE registro_clinico SET cliente_id = cliente_id, profissional_id = bia WHERE id = registro_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'registro de prontuario mudou de profissional'; END IF;
+
+    -- Correção sem motivo é recusada.
+    recusou := false;
+    BEGIN
+        INSERT INTO registro_clinico_versao (clinica_id, registro_id, numero, modelo_ficha_id, conteudo, autor_id, autor_nome)
+        VALUES (c, registro_regra, 2, modelo_regra, '{"descricao":"Sessão"}', autor_regra, 'Autor');
+    EXCEPTION WHEN check_violation THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'correcao sem motivo foi aceita'; END IF;
+
+    -- Modelo usado não muda os campos.
+    recusou := false;
+    BEGIN
+        UPDATE modelo_ficha SET campos = '[]' WHERE id = modelo_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'campos de modelo de ficha foram alterados'; END IF;
+
+    -- Registro de outra clínica é recusado.
+    recusou := false;
+    BEGIN
+        INSERT INTO registro_clinico (clinica_id, cliente_id, profissional_id, tipo)
+        VALUES (c, paciente, vizinha, 'EVOLUCAO');
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'registro com profissional de outra clinica foi aceito'; END IF;
 END $$;
 ROLLBACK;
 SQL
-echo "    ok: sobreposição por profissional, mesma clínica, perfis, séries e saldo de pacote"
+echo "    ok: sobreposição por profissional, mesma clínica, perfis, séries, saldo de pacote e prontuário imutável"
 
 echo "==> Buildando a aplicação"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -251,6 +319,7 @@ assert_status GET  /api/agenda/horarios                            401 "agenda e
 assert_status GET  /api/profissionais                              401 "equipe exige auth"
 assert_status GET  /api/usuarios                                   401 "usuários exigem auth"
 assert_status GET  /api/pacotes                                    401 "pacotes exigem auth"
+assert_status GET  /api/fichas/modelos                             401 "modelos de ficha exigem auth"
 assert_status GET  /api/agenda/link                                401 "link público exige auth"
 assert_status GET  /api/me                                         401 "perfil exige auth"
 # 404 = onboarding público desligado por padrão (ONBOARDING_PUBLICO_ATIVO)
