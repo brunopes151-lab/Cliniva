@@ -335,6 +335,14 @@ ROLLBACK;
 SQL
 echo "    ok: sobreposição por profissional, mesma clínica, perfis, séries, saldo de pacote, prontuário imutável e LGPD"
 
+echo "==> Conferindo que nenhuma tabela fica aberta para a API pública do Supabase"
+sem_rls="$("${PSQL[@]}" -At -c "SELECT string_agg(c.relname, ', ') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity")"
+if [ -n "$sem_rls" ]; then
+    echo "ERRO: tabela(s) sem RLS (ligue o RLS numa migration nova): $sem_rls"
+    exit 1
+fi
+echo "    ok: RLS ligado em todas as tabelas"
+
 echo "==> Buildando a aplicação"
 mkdir -p "$(dirname "$LOG_FILE")"
 (cd backend && ./mvnw -q -B -DskipTests package)
