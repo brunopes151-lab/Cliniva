@@ -19,6 +19,7 @@ import com.cliniva.agenda.dtos.DisponibilidadeDiaDTO;
 import com.cliniva.booking.dtos.BookingRequestDTO;
 import com.cliniva.booking.dtos.BookingResponseDTO;
 import com.cliniva.booking.dtos.ServicoPublicoDTO;
+import com.cliniva.common.OrigemRequisicao;
 import com.cliniva.tenancy.dtos.EquipeDtos.ProfissionalPublicoDTO;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -64,19 +65,10 @@ public class BookingController {
 
     /**
      * Chave do rate limit: clínica + origem. O telefone NÃO entra na chave
-     * (trocar o número a cada request zeraria o contador) e o
-     * X-Forwarded-For usa o ÚLTIMO valor, que é o que o Render anexa —
-     * o primeiro é controlado pelo cliente e serviria de bypass.
+     * (trocar o número a cada request zeraria o contador).
      */
     private String chaveDaOrigem(String slug, HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        String origem;
-        if (xForwardedFor != null && !xForwardedFor.isBlank()) {
-            String[] partes = xForwardedFor.split(",");
-            origem = partes[partes.length - 1].trim();
-        } else {
-            origem = request.getRemoteAddr();
-        }
+        String origem = OrigemRequisicao.ip(request);
         return slug + "|" + (origem == null ? "desconhecida" : origem);
     }
 }
