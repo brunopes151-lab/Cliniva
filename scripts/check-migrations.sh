@@ -82,6 +82,9 @@ DECLARE
     bia uuid := gen_random_uuid();
     vizinha uuid := gen_random_uuid();
     paciente uuid := gen_random_uuid();
+    servico_regra uuid;
+    pacote_regra uuid;
+    pc_regra uuid;
     recusou boolean;
 BEGIN
     INSERT INTO clinica (id, nome, slug, ativa, criada_em) VALUES
@@ -139,10 +142,44 @@ BEGIN
     EXCEPTION WHEN check_violation THEN recusou := true;
     END;
     IF NOT recusou THEN RAISE EXCEPTION 'papel desconhecido foi aceito'; END IF;
+
+    -- Série: fim por data OU por quantidade, nunca os dois.
+    recusou := false;
+    BEGIN
+        INSERT INTO serie_agendamento (id, clinica_id, cliente_id, profissional_id, frequencia, inicio, data_fim, quantidade)
+        VALUES (gen_random_uuid(), c, paciente, ana, 'SEMANAL', '2030-01-07 10:00', '2030-03-01', 4);
+    EXCEPTION WHEN check_violation THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'serie com data final e quantidade foi aceita'; END IF;
+
+    -- Pacote: saldo nunca negativo e movimento só de inserção.
+    INSERT INTO servico (id, clinica_id, nome, valor, duracao_minutos)
+    VALUES (gen_random_uuid(), c, 'Servico regras ' || c, 100, 50) RETURNING id INTO servico_regra;
+    INSERT INTO pacote (id, clinica_id, servico_id, nome, sessoes, validade_dias, preco)
+    VALUES (gen_random_uuid(), c, servico_regra, 'Pacote regras', 2, 30, 200) RETURNING id INTO pacote_regra;
+    INSERT INTO pacote_cliente (id, clinica_id, cliente_id, pacote_id, servico_id, nome, sessoes_total, saldo,
+                                data_compra, data_validade, valor_pago)
+    VALUES (gen_random_uuid(), c, paciente, pacote_regra, servico_regra, 'Pacote regras', 2, 0,
+            current_date, current_date + 30, 200) RETURNING id INTO pc_regra;
+
+    recusou := false;
+    BEGIN
+        UPDATE pacote_cliente SET saldo = saldo - 1 WHERE id = pc_regra;
+    EXCEPTION WHEN check_violation THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'saldo negativo foi aceito'; END IF;
+
+    INSERT INTO pacote_movimento (id, clinica_id, pacote_cliente_id, tipo) VALUES (gen_random_uuid(), c, pc_regra, 'BAIXA');
+    recusou := false;
+    BEGIN
+        DELETE FROM pacote_movimento WHERE pacote_cliente_id = pc_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'movimento de pacote foi apagado'; END IF;
 END $$;
 ROLLBACK;
 SQL
-echo "    ok: sobreposição por profissional, profissional da mesma clínica e perfis"
+echo "    ok: sobreposição por profissional, mesma clínica, perfis, séries e saldo de pacote"
 
 echo "==> Buildando a aplicação"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -213,6 +250,7 @@ assert_status POST /api/public/booking/slug-inexistente            400 "booking 
 assert_status GET  /api/agenda/horarios                            401 "agenda exige auth"
 assert_status GET  /api/profissionais                              401 "equipe exige auth"
 assert_status GET  /api/usuarios                                   401 "usuários exigem auth"
+assert_status GET  /api/pacotes                                    401 "pacotes exigem auth"
 assert_status GET  /api/agenda/link                                401 "link público exige auth"
 assert_status GET  /api/me                                         401 "perfil exige auth"
 # 404 = onboarding público desligado por padrão (ONBOARDING_PUBLICO_ATIVO)
