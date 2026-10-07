@@ -11,12 +11,19 @@ export function formatDataHora(iso: string): string {
   return dataHora.format(new Date(iso))
 }
 
+// "2026-10-07" sozinho é lido como meia-noite UTC e, no fuso do Brasil, vira o
+// dia anterior. Datas sem hora são tratadas como dia do calendário local.
+function paraDate(iso: string): Date {
+  const soData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  return soData ? new Date(Number(soData[1]), Number(soData[2]) - 1, Number(soData[3])) : new Date(iso)
+}
+
 export function formatData(iso: string): string {
-  return data.format(new Date(iso))
+  return data.format(paraDate(iso))
 }
 
 export function formatDataLonga(iso: string): string {
-  return dataLonga.format(new Date(iso))
+  return dataLonga.format(paraDate(iso))
 }
 
 const STATUS_LABEL: Record<string, string> = {
