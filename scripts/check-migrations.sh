@@ -71,6 +71,79 @@ else
     echo "    (nenhuma migration de hardening)"
 fi
 
+echo "==> Conferindo as regras do banco (dentro de uma transação desfeita no fim)"
+"${PSQL[@]}" <<'SQL' >/dev/null
+BEGIN;
+DO $$
+DECLARE
+    c uuid := gen_random_uuid();
+    outra uuid := gen_random_uuid();
+    ana uuid := gen_random_uuid();
+    bia uuid := gen_random_uuid();
+    vizinha uuid := gen_random_uuid();
+    paciente uuid := gen_random_uuid();
+    recusou boolean;
+BEGIN
+    INSERT INTO clinica (id, nome, slug, ativa, criada_em) VALUES
+        (c, 'Regras ' || c, 'regras-' || c, true, now()),
+        (outra, 'Regras ' || outra, 'regras-' || outra, true, now());
+    INSERT INTO profissional (id, clinica_id, nome) VALUES
+        (ana, c, 'Ana'), (bia, c, 'Bia'), (vizinha, outra, 'Vizinha');
+    INSERT INTO cliente (id, clinica_id, nome, telefone) VALUES (paciente, c, 'Paciente', '5511900000000');
+
+    -- Ana 10:00-11:00; Bia no mesmo horário é permitido.
+    INSERT INTO atendimento (id, clinica_id, cliente_id, profissional_id, data_criacao, data_atendimento, duracao_minutos, status)
+    VALUES (gen_random_uuid(), c, paciente, ana, current_date, '2030-01-07 10:00', 60, 'AGENDADO'),
+           (gen_random_uuid(), c, paciente, bia, current_date, '2030-01-07 10:00', 60, 'AGENDADO');
+    -- Encostado (11:00) e cancelado sobreposto também são permitidos.
+    INSERT INTO atendimento (id, clinica_id, cliente_id, profissional_id, data_criacao, data_atendimento, duracao_minutos, status)
+    VALUES (gen_random_uuid(), c, paciente, ana, current_date, '2030-01-07 11:00', 30, 'AGENDADO'),
+           (gen_random_uuid(), c, paciente, ana, current_date, '2030-01-07 10:30', 30, 'CANCELADO');
+
+    recusou := false;
+    BEGIN
+        INSERT INTO atendimento (id, clinica_id, cliente_id, profissional_id, data_criacao, data_atendimento, duracao_minutos, status)
+        VALUES (gen_random_uuid(), c, paciente, ana, current_date, '2030-01-07 10:30', 30, 'AGENDADO');
+    EXCEPTION WHEN exclusion_violation THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'sobreposição do mesmo profissional foi aceita'; END IF;
+
+    recusou := false;
+    BEGIN
+        INSERT INTO atendimento (id, clinica_id, cliente_id, profissional_id, data_criacao, data_atendimento, duracao_minutos, status)
+        VALUES (gen_random_uuid(), c, paciente, vizinha, current_date, '2030-01-08 10:00', 30, 'AGENDADO');
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'atendimento com profissional de outra clínica foi aceito'; END IF;
+
+    recusou := false;
+    BEGIN
+        INSERT INTO usuario (id, clinica_id, papel, ativo, email, criado_em)
+        VALUES (gen_random_uuid(), c, 'PROFISSIONAL', true, 'sem-prof-' || c || '@exemplo.test', now());
+    EXCEPTION WHEN check_violation THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'PROFISSIONAL sem profissional foi aceito'; END IF;
+
+    recusou := false;
+    BEGIN
+        INSERT INTO usuario (id, clinica_id, papel, ativo, email, criado_em, profissional_id)
+        VALUES (gen_random_uuid(), c, 'PROFISSIONAL', true, 'cruzado-' || c || '@exemplo.test', now(), vizinha);
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'usuário ligado a profissional de outra clínica foi aceito'; END IF;
+
+    recusou := false;
+    BEGIN
+        INSERT INTO usuario (id, clinica_id, papel, ativo, email, criado_em)
+        VALUES (gen_random_uuid(), c, 'GERENTE', true, 'papel-' || c || '@exemplo.test', now());
+    EXCEPTION WHEN check_violation THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'papel desconhecido foi aceito'; END IF;
+END $$;
+ROLLBACK;
+SQL
+echo "    ok: sobreposição por profissional, profissional da mesma clínica e perfis"
+
 echo "==> Buildando a aplicação"
 mkdir -p "$(dirname "$LOG_FILE")"
 (cd backend && ./mvnw -q -B -DskipTests package)
@@ -138,6 +211,8 @@ assert_status GET  /api/public/booking/slug-inexistente/servicos 404 "booking p�
 assert_status POST /api/public/booking/slug-inexistente            400 "booking público valida payload"
 # 401 = rota existe e exige autenticação
 assert_status GET  /api/agenda/horarios                            401 "agenda exige auth"
+assert_status GET  /api/profissionais                              401 "equipe exige auth"
+assert_status GET  /api/usuarios                                   401 "usuários exigem auth"
 assert_status GET  /api/agenda/link                                401 "link público exige auth"
 assert_status GET  /api/me                                         401 "perfil exige auth"
 # 404 = onboarding público desligado por padrão (ONBOARDING_PUBLICO_ATIVO)
