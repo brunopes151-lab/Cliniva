@@ -70,9 +70,10 @@ public class SecurityConfig {
                         // clínica (OWNER) e o ADMIN da plataforma.
                         .requestMatchers("/api/usuarios/**").hasAnyRole(ADMINISTRACAO)
                         .requestMatchers(HttpMethod.GET, "/api/profissionais/**", "/api/especialidades/**",
-                                "/api/servicos/**", "/api/agenda/horarios", "/api/clinica/marca").authenticated()
+                                "/api/servicos/**", "/api/pacotes/**", "/api/agenda/horarios", "/api/clinica/marca")
+                        .authenticated()
                         .requestMatchers("/api/profissionais/**", "/api/especialidades/**", "/api/servicos/**",
-                                "/api/agenda/horarios", "/api/clinica/**").hasAnyRole(ADMINISTRACAO)
+                                "/api/pacotes/**", "/api/agenda/horarios", "/api/clinica/**").hasAnyRole(ADMINISTRACAO)
                         // Recepção e administração. O profissional não mexe em
                         // cadastro de paciente, estoque nem no resumo financeiro.
                         .requestMatchers("/api/resumo-do-dia/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
@@ -81,6 +82,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/clientes/*/notas").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/clientes/*/notas/*").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/clientes").hasAnyRole(EQUIPE_ADMINISTRATIVA)
+                        // Venda e cancelamento de pacote: recepção e administração.
+                        .requestMatchers(HttpMethod.POST, "/api/clientes/*/pacotes/**")
+                        .hasAnyRole(EQUIPE_ADMINISTRATIVA)
                         .requestMatchers(HttpMethod.PUT, "/api/clientes/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
                         .requestMatchers(HttpMethod.DELETE, "/api/clientes/**").hasAnyRole(EQUIPE_ADMINISTRATIVA)
                         // O resto (agenda, atendimentos, leitura de pacientes) é

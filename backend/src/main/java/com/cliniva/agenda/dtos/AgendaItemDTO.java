@@ -20,6 +20,7 @@ public record AgendaItemDTO(
         List<String> servicos,
         UUID profissionalId,
         String profissionalNome,
-        String profissionalCor) {
+        String profissionalCor,
+        UUID serieId) {
 
 }

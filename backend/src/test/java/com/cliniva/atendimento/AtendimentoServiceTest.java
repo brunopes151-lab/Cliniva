@@ -47,6 +47,7 @@ import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.exception.TransicaoStatusInvalidaException;
 import com.cliniva.item.Item;
 import com.cliniva.item.ItemRepository;
+import com.cliniva.pacote.PacoteService;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.exception.AcessoNaoPermitidoException;
@@ -86,6 +87,8 @@ class AtendimentoServiceTest {
         private ProfissionalService profissionalService;
         @Mock
         private ClinicaContext clinicaContext;
+        @Mock
+        private PacoteService pacoteService;
 
         private static final UUID PROFISSIONAL_ID = UUID.randomUUID();
         private static final Profissional ANA = profissional(PROFISSIONAL_ID, "Ana");
@@ -377,6 +380,44 @@ class AtendimentoServiceTest {
                 verify(itemRepository, never()).save(any());
         }
 
+        // ---------- pacote ----------
+
+        @Test
+        void concluirDaBaixaNoPacote() {
+                Atendimento atendimento = atendimentoComStatus(StatusAtendimento.AGENDADO);
+                when(atendimentoRepository.findByIdAndClinica(ATENDIMENTO_ID, CLINICA))
+                                .thenReturn(Optional.of(atendimento));
+
+                atendimentoService.alterarStatus(CLINICA, ATENDIMENTO_ID, StatusAtendimento.CONCLUIDO);
+
+                verify(pacoteService).baixarSessoes(atendimento);
+                verify(pacoteService, never()).estornarSessoes(any());
+        }
+
+        @Test
+        void concluidoQueViraCanceladoEstornaOPacote() {
+                Atendimento atendimento = atendimentoComStatus(StatusAtendimento.CONCLUIDO);
+                when(atendimentoRepository.findByIdAndClinica(ATENDIMENTO_ID, CLINICA))
+                                .thenReturn(Optional.of(atendimento));
+
+                atendimentoService.alterarStatus(CLINICA, ATENDIMENTO_ID, StatusAtendimento.CANCELADO);
+
+                verify(pacoteService).estornarSessoes(atendimento);
+                verify(pacoteService, never()).baixarSessoes(any());
+        }
+
+        @Test
+        void agendadoCanceladoNaoMexeNoPacote() {
+                Atendimento atendimento = atendimentoComStatus(StatusAtendimento.AGENDADO);
+                when(atendimentoRepository.findByIdAndClinica(ATENDIMENTO_ID, CLINICA))
+                                .thenReturn(Optional.of(atendimento));
+
+                atendimentoService.alterarStatus(CLINICA, ATENDIMENTO_ID, StatusAtendimento.CANCELADO);
+
+                verify(pacoteService, never()).estornarSessoes(any());
+                verify(pacoteService, never()).baixarSessoes(any());
+        }
+
         @Test
         void canceladoEDefinitivoENaoPodeVoltar() {
                 Atendimento cancelado = atendimentoComStatus(StatusAtendimento.CANCELADO);
@@ -546,7 +587,8 @@ class AtendimentoServiceTest {
                 var resposta = atendimentoService.createAtendimento(CLINICA, requisicaoComUmServicoEItens());
 
                 verify(profissionalService).exigirApto(ANA, List.of(servico));
-                verify(agendaService).validarDisponibilidade(eq(CLINICA), eq(ANA), any(), eq(30), isNull());
+                verify(agendaService).validarDisponibilidade(eq(CLINICA), eq(ANA), any(), eq(30), isNull(),
+                                eq(AgendaService.JANELA_INTERNA_DIAS));
                 assertThat(resposta.profissionalNome()).isEqualTo("Ana");
         }
 
@@ -594,7 +636,7 @@ class AtendimentoServiceTest {
 
                 verify(profissionalService).exigirApto(bia, List.of(feito.getServico()));
                 verify(agendaService).validarDisponibilidade(eq(CLINICA), eq(bia), any(), any(Integer.class),
-                                eq(ATENDIMENTO_ID));
+                                eq(ATENDIMENTO_ID), eq(AgendaService.JANELA_INTERNA_DIAS));
                 assertThat(atendimento.getProfissional()).isSameAs(bia);
         }
 }

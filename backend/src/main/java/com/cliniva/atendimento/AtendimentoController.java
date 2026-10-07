@@ -23,6 +23,10 @@ import com.cliniva.atendimento.dtos.CreateAtendimentoRequestDTO;
 import com.cliniva.atendimento.dtos.CreateAtendimentoResponseDTO;
 import com.cliniva.atendimento.dtos.UpdateAtendimentoRequestDTO;
 import com.cliniva.atendimento.dtos.UpdateStatusAtendimentoRequestDTO;
+import com.cliniva.atendimento.dtos.SerieDtos.CancelamentoSerieDTO;
+import com.cliniva.atendimento.dtos.SerieDtos.PreviaSerieDTO;
+import com.cliniva.atendimento.dtos.SerieDtos.SerieCriadaDTO;
+import com.cliniva.atendimento.dtos.SerieDtos.SerieRequestDTO;
 import com.cliniva.atendimento.enums.StatusAtendimento;
 import com.cliniva.tenancy.ClinicaContext;
 
@@ -34,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AtendimentoController {
     private final AtendimentoService atendimentoService;
+    private final SerieService serieService;
     private final ClinicaContext clinicaContext;
 
     @PostMapping
@@ -70,5 +75,23 @@ public class AtendimentoController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateAtendimentoRequestDTO requestDTO) {
         return atendimentoService.atualizarAtendimento(clinicaContext.obterClinicaAtual(), id, requestDTO);
+    }
+
+    /** Datas que a série teria, com o motivo das que não dá para marcar. Não grava nada. */
+    @PostMapping("/series/previa")
+    public PreviaSerieDTO previaSerie(@Valid @RequestBody SerieRequestDTO requestDTO) {
+        return serieService.previa(clinicaContext.obterClinicaAtual(), requestDTO);
+    }
+
+    @PostMapping("/series")
+    @ResponseStatus(HttpStatus.CREATED)
+    public SerieCriadaDTO criarSerie(@Valid @RequestBody SerieRequestDTO requestDTO) {
+        return serieService.criar(clinicaContext.obterClinicaAtual(), requestDTO);
+    }
+
+    /** Cancela esta sessão e as seguintes, ainda agendadas, da mesma série. */
+    @PostMapping("/{id}/cancelar-seguintes")
+    public CancelamentoSerieDTO cancelarSeguintes(@PathVariable UUID id) {
+        return serieService.cancelarSeguintes(clinicaContext.obterClinicaAtual(), id);
     }
 }

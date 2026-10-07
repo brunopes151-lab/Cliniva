@@ -49,8 +49,14 @@ public class AgendaService {
     /** Teto de duração de um atendimento (1 dia) — evita wrap de LocalTime e abuse. */
     public static final int DURACAO_MAXIMA_MINUTOS = 1440;
 
-    /** Janela de agendamento permitida para qualquer fluxo (público e interno). */
+    /** Janela do agendamento online (o paciente marca sozinho). */
     public static final int JANELA_DIAS = 30;
+
+    /**
+     * Janela da equipe (agenda interna e séries). Maior que a online porque
+     * um tratamento de fisioterapia em série passa de um mês.
+     */
+    public static final int JANELA_INTERNA_DIAS = 180;
 
     private static final int PASSO_MINUTOS = 30;
 
@@ -91,6 +97,12 @@ public class AgendaService {
     @Transactional(readOnly = true)
     public DisponibilidadeDiaDTO disponibilidadeDia(Clinica clinica, LocalDate data, UUID servicoId,
             UUID profissionalId) {
+        return disponibilidadeDia(clinica, data, servicoId, profissionalId, JANELA_DIAS);
+    }
+
+    @Transactional(readOnly = true)
+    public DisponibilidadeDiaDTO disponibilidadeDia(Clinica clinica, LocalDate data, UUID servicoId,
+            UUID profissionalId, int janelaDias) {
         Servico servico = servicoRepository.findByIdAndClinica(servicoId, clinica)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Serviço não encontrado"));
 
@@ -98,7 +110,7 @@ public class AgendaService {
 
         // Regra de janela: nunca sugerir horário que não pode ser agendado.
         LocalDate hoje = LocalDate.now(clock);
-        if (data.isBefore(hoje) || data.isAfter(hoje.plusDays(JANELA_DIAS))) {
+        if (data.isBefore(hoje) || data.isAfter(hoje.plusDays(janelaDias))) {
             return new DisponibilidadeDiaDTO(data, duracao, List.of());
         }
 
@@ -173,10 +185,17 @@ public class AgendaService {
     /**
      * Confere janela, expediente do profissional e conflito com a agenda
      * DELE. Dois profissionais diferentes podem atender no mesmo horário.
+     * Janela do agendamento online; a equipe usa a variante com janela.
      */
     @Transactional
     public void validarDisponibilidade(Clinica clinica, Profissional profissional, LocalDateTime inicio,
             int duracaoMinutos, UUID atendimentoExcecaoId) {
+        validarDisponibilidade(clinica, profissional, inicio, duracaoMinutos, atendimentoExcecaoId, JANELA_DIAS);
+    }
+
+    @Transactional
+    public void validarDisponibilidade(Clinica clinica, Profissional profissional, LocalDateTime inicio,
+            int duracaoMinutos, UUID atendimentoExcecaoId, int janelaDias) {
         int duracao = duracaoValida(duracaoMinutos);
 
         // Serializa todas as escritas de atendimento desta clínica (create, update e
@@ -186,20 +205,35 @@ public class AgendaService {
         clinicaRepository.findByIdParaUpdate(clinica.getId())
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Clínica não encontrada"));
 
+        Optional<String> motivo = motivoIndisponivel(clinica, profissional, inicio, duracao, atendimentoExcecaoId,
+                janelaDias);
+        if (motivo.isPresent()) {
+            throw new HorarioIndisponivelException(motivo.get());
+        }
+    }
+
+    /**
+     * Mesma conferência de {@link #validarDisponibilidade}, sem lock e sem
+     * exceção: devolve o motivo quando o horário não serve. Usado na prévia
+     * das séries, que lista os dias com problema antes de confirmar.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> motivoIndisponivel(Clinica clinica, Profissional profissional, LocalDateTime inicio,
+            int duracaoMinutos, UUID atendimentoExcecaoId, int janelaDias) {
+        int duracao = duracaoValida(duracaoMinutos);
         LocalDate data = inicio.toLocalDate();
         LocalDate hoje = LocalDate.now(clock);
 
         if (data.isBefore(hoje)) {
-            throw new HorarioIndisponivelException("Não é possível agendar em uma data passada");
+            return Optional.of("Não é possível agendar em uma data passada");
         }
-        if (data.isAfter(hoje.plusDays(JANELA_DIAS))) {
-            throw new HorarioIndisponivelException(
-                    "Só é possível agendar entre hoje e os próximos " + JANELA_DIAS + " dias");
+        if (data.isAfter(hoje.plusDays(janelaDias))) {
+            return Optional.of("Só é possível agendar entre hoje e os próximos " + janelaDias + " dias");
         }
 
         Optional<HorarioAtendimento> horario = horarioDoDia(clinica, profissional, data);
         if (horario.isEmpty()) {
-            throw new HorarioIndisponivelException(profissional.getNome() + " não atende neste dia");
+            return Optional.of(profissional.getNome() + " não atende neste dia");
         }
 
         LocalDateTime abertura = data.atTime(horario.get().getAbertura());
@@ -207,17 +241,18 @@ public class AgendaService {
         LocalDateTime fim = inicio.plusMinutes(duracao);
 
         if (inicio.isBefore(abertura) || fim.isAfter(fechamento)) {
-            throw new HorarioIndisponivelException("Fora do horário de atendimento de " + profissional.getNome());
+            return Optional.of("Fora do horário de atendimento de " + profissional.getNome());
         }
 
         if (inicio.isBefore(LocalDateTime.now(clock))) {
-            throw new HorarioIndisponivelException("Horário escolhido já passou");
+            return Optional.of("Horário escolhido já passou");
         }
 
         List<Atendimento> ocupados = atendimentosBloqueantes(clinica, profissional, data, atendimentoExcecaoId);
         if (estaOcupado(inicio, duracao, ocupados)) {
-            throw new HorarioIndisponivelException("Horário já ocupado na agenda de " + profissional.getNome());
+            return Optional.of("Horário já ocupado na agenda de " + profissional.getNome());
         }
+        return Optional.empty();
     }
 
     /**
@@ -396,7 +431,8 @@ public class AgendaService {
                 nomes,
                 atendimento.getProfissional().getId(),
                 atendimento.getProfissional().getNome(),
-                atendimento.getProfissional().getCor());
+                atendimento.getProfissional().getCor(),
+                atendimento.getSerie() != null ? atendimento.getSerie().getId() : null);
     }
 
     private HorarioResponseDTO toHorarioResponseDTO(HorarioAtendimento horario) {

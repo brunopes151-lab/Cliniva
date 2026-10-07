@@ -55,7 +55,8 @@ public class AgendaController {
             @RequestParam UUID servicoId,
             @RequestParam(required = false) UUID profissionalId) {
         Clinica clinica = clinicaContext.obterClinicaAtual();
-        return agendaService.disponibilidadeDia(clinica, data, servicoId, profissionalId);
+        return agendaService.disponibilidadeDia(clinica, data, servicoId, profissionalId,
+                AgendaService.JANELA_INTERNA_DIAS);
     }
 
     @GetMapping("/horarios")

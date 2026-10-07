@@ -47,4 +47,8 @@ public interface AtendimentoRepository
     List<Object[]> contarPorClinica();
 
     long countByClinica(Clinica clinica);
+
+    /** Sessões de uma série a partir de uma data (inclusive), em ordem. */
+    List<Atendimento> findBySerie_IdAndDataAtendimentoGreaterThanEqualOrderByDataAtendimentoAsc(UUID serieId,
+            LocalDateTime data);
 }

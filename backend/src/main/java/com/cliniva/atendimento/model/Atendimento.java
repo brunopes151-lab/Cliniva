@@ -57,6 +57,10 @@ public class Atendimento {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "profissional_id", nullable = false)
     private Profissional profissional;
+    /** Série recorrente que gerou este atendimento, se houver. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "serie_id")
+    private SerieAgendamento serie;
 
     /**
      * Fallback quando o atendimento é criado fora do {@code AtendimentoService}

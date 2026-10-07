@@ -37,6 +37,7 @@ import com.cliniva.cliente.dtos.UpdateClienteRequestDTO;
 import com.cliniva.cliente.enums.CanalPreferido;
 import com.cliniva.cliente.enums.ClienteStatus;
 import com.cliniva.cliente.enums.OrigemCliente;
+import com.cliniva.pacote.PacoteClienteRepository;
 import com.cliniva.exception.RecursoDuplicadoException;
 import com.cliniva.exception.RecursoEmUsoException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
@@ -57,6 +58,9 @@ class ClienteServiceTest {
 
     @Mock
     private AtendimentoRepository atendimentoRepository;
+
+    @Mock
+    private PacoteClienteRepository pacoteClienteRepository;
 
     @Mock
     private AtendimentoService atendimentoService;
