@@ -457,3 +457,76 @@ export interface RegistroClinico {
   podeCorrigir: boolean
   atual: VersaoRegistro
 }
+
+// --- LGPD ---
+
+export interface TermoConsentimento {
+  id: string
+  versao: number
+  texto: string
+  vigenteDesde: string
+  publicadoPor: string | null
+}
+
+export interface ConsentimentoPaciente {
+  id: string
+  termoId: string
+  versaoTermo: number
+  termoAtual: boolean
+  aceitoEm: string
+  registradoPor: string
+  vigente: boolean
+  revogadoEm: string | null
+  revogadoPor: string | null
+  motivoRevogacao: string | null
+}
+
+export interface SituacaoConsentimento {
+  termoAtual: TermoConsentimento
+  /** Há um aceite não revogado (de qualquer versão). */
+  vigente: boolean
+  aceitouVersaoAtual: boolean
+  consentimentos: ConsentimentoPaciente[]
+}
+
+export type AcaoAuditoria =
+  | 'VER_PRONTUARIO'
+  | 'VER_HISTORICO'
+  | 'CRIAR_REGISTRO'
+  | 'CORRIGIR_REGISTRO'
+  | 'EXPORTAR_DADOS'
+  | 'REGISTRAR_CONSENTIMENTO'
+  | 'REVOGAR_CONSENTIMENTO'
+
+export const ACAO_AUDITORIA_LABEL: Record<AcaoAuditoria, string> = {
+  VER_PRONTUARIO: 'Abriu o prontuário',
+  VER_HISTORICO: 'Viu as versões de um registro',
+  CRIAR_REGISTRO: 'Fez um registro',
+  CORRIGIR_REGISTRO: 'Corrigiu um registro',
+  EXPORTAR_DADOS: 'Exportou os dados',
+  REGISTRAR_CONSENTIMENTO: 'Registrou o aceite do termo',
+  REVOGAR_CONSENTIMENTO: 'Registrou a revogação do termo',
+}
+
+export interface AcessoAuditoria {
+  em: string
+  usuario: string
+  papel: Papel
+  modoSuporte: boolean
+  acao: AcaoAuditoria
+  registroId: string | null
+  ip: string | null
+}
+
+export interface ExportacaoPaciente {
+  geradoEm: string
+  geradoPor: string
+  clinica: string
+  cadastro: Cliente
+  anotacoes: ClienteNota[]
+  atendimentos: Atendimento[]
+  pacotes: PacoteCliente[]
+  prontuario: { registro: RegistroClinico; versoes: VersaoRegistro[] }[]
+  consentimentos: ConsentimentoPaciente[]
+  termosAceitos: TermoConsentimento[]
+}

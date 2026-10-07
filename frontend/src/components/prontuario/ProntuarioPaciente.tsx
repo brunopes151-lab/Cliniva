@@ -20,6 +20,8 @@ interface Props {
   clienteId: string
   /** Só quem tem cadastro de profissional escreve no prontuário. */
   podeRegistrar: boolean
+  /** Sem termo aceito (ou revogado): o prontuário só aceita correções. */
+  semConsentimento: boolean
   atendimentos: Atendimento[]
 }
 
@@ -28,7 +30,7 @@ type Edicao =
   | { modo: 'corrigir'; registro: RegistroClinico }
 
 /** Aba Prontuário: linha do tempo, novo registro, correção e histórico de versões. */
-export function ProntuarioPaciente({ clienteId, podeRegistrar, atendimentos }: Props) {
+export function ProntuarioPaciente({ clienteId, podeRegistrar, semConsentimento, atendimentos }: Props) {
   const { data: registros, loading, error, refetch } = useApi(() => prontuarioApi.listar(clienteId), [clienteId])
   const { data: modelos } = useApi(() => (podeRegistrar ? prontuarioApi.modelos() : Promise.resolve([])), [podeRegistrar])
 
@@ -115,7 +117,7 @@ export function ProntuarioPaciente({ clienteId, podeRegistrar, atendimentos }: P
             Nada é apagado: uma correção vira uma versão nova, com o motivo, e as anteriores ficam no histórico.
           </p>
         </div>
-        {podeRegistrar && (
+        {podeRegistrar && !semConsentimento && (
           <Button onClick={abrirNovo} className="w-full sm:w-auto">
             Novo registro
           </Button>
@@ -123,6 +125,12 @@ export function ProntuarioPaciente({ clienteId, podeRegistrar, atendimentos }: P
       </div>
 
       <div className="pt-6">
+        {semConsentimento && (
+          <p className="mb-6 border-l-2 border-red-600 pl-3 text-sm text-ink">
+            O paciente não tem termo de consentimento aceito. Registre o aceite na aba Ficha para fazer registros
+            novos; correções dos registros que já existem continuam possíveis.
+          </p>
+        )}
         {error && <ErrorBanner message={error} />}
         {(registros?.length ?? 0) > 0 && (
           <div className="mb-4 max-w-xs">
