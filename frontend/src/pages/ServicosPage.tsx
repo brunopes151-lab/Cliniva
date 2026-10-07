@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { servicosApi } from '@/api/servicosApi'
+import { PacotesCatalogo } from '@/components/pacotes/PacotesCatalogo'
 import { Button } from '@/components/ui/Button'
 import { CardActions, CardDetail, CardItem, CardLabel, CardList } from '@/components/ui/CardList'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -187,6 +188,8 @@ export function ServicosPage() {
           </div>
         </>
       )}
+
+      {!loading && <PacotesCatalogo servicos={servicos ?? []} podeEditar={podeEditar} />}
 
       <Modal
         open={modalAberto}

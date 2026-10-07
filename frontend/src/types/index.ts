@@ -163,6 +163,7 @@ export interface AgendaItem {
   profissionalId: string
   profissionalNome: string
   profissionalCor: string | null
+  serieId: string | null
 }
 
 export interface HorarioAtendimento {
@@ -281,4 +282,99 @@ export interface UsuarioCriado {
 export interface SenhaTemporaria {
   email: string
   senhaTemporaria: string
+}
+
+export type FrequenciaSerie = 'DIARIA' | 'SEMANAL' | 'QUINZENAL' | 'MENSAL'
+
+export const FREQUENCIA_LABEL: Record<FrequenciaSerie, string> = {
+  DIARIA: 'Todo dia (seg. a sex.)',
+  SEMANAL: 'Toda semana',
+  QUINZENAL: 'A cada 15 dias',
+  MENSAL: 'Todo mês',
+}
+
+export interface SerieInput {
+  clienteId: string
+  profissionalId: string
+  servicos: AtendimentoServicoInput[]
+  inicio: string
+  frequencia: FrequenciaSerie
+  incluiSabado: boolean
+  dataFim?: string | null
+  quantidade?: number | null
+}
+
+export interface OcorrenciaSerie {
+  dataHora: string
+  disponivel: boolean
+  motivo: string | null
+}
+
+export interface PreviaSerie {
+  ocorrencias: OcorrenciaSerie[]
+  disponiveis: number
+  puladas: number
+}
+
+export interface SerieCriada {
+  serieId: string
+  criados: unknown[]
+  puladas: OcorrenciaSerie[]
+}
+
+export interface Pacote {
+  id: string
+  nome: string
+  servicoId: string
+  servicoNome: string
+  sessoes: number
+  validadeDias: number
+  preco: number
+  ativo: boolean
+}
+
+export interface PacoteInput {
+  nome: string
+  servicoId: string
+  sessoes: number
+  validadeDias: number
+  preco: number
+  ativo?: boolean
+}
+
+export type SituacaoPacote = 'ATIVO' | 'ESGOTADO' | 'VENCIDO' | 'CANCELADO'
+
+export const SITUACAO_PACOTE_LABEL: Record<SituacaoPacote, string> = {
+  ATIVO: 'Ativo',
+  ESGOTADO: 'Esgotado',
+  VENCIDO: 'Vencido',
+  CANCELADO: 'Cancelado',
+}
+
+export interface MovimentoPacote {
+  tipo: 'BAIXA' | 'ESTORNO'
+  criadoEm: string
+  atendimentoId: string | null
+  dataAtendimento: string | null
+}
+
+export interface PacoteCliente {
+  id: string
+  pacoteId: string
+  nome: string
+  servicoId: string
+  servicoNome: string
+  sessoesTotal: number
+  saldo: number
+  dataCompra: string
+  dataValidade: string
+  valorPago: number
+  situacao: SituacaoPacote
+  movimentos: MovimentoPacote[]
+}
+
+export interface VenderPacoteInput {
+  pacoteId: string
+  dataCompra?: string
+  valorPago?: number
 }

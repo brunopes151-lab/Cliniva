@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { clientesApi } from '@/api/clientesApi'
+import { PacotesDoCliente } from '@/components/pacotes/PacotesDoCliente'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
@@ -10,6 +11,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
+import { useAuth } from '@/hooks/useAuth'
+import { ehEquipeAdministrativa } from '@/lib/perfis'
 import {
   canalLabel,
   fidelidadeLabel,
@@ -56,6 +59,7 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 
 export function ClienteDetalhePage() {
   const { marca } = useMarca()
+  const { usuario } = useAuth()
   const { id } = useParams<{ id: string }>()
   const {
     data: historico,
@@ -166,6 +170,8 @@ export function ClienteDetalhePage() {
               <StatCell label="Última visita" value={historico.ultimaVisita ? formatData(historico.ultimaVisita) : '—'} />
             </div>
           </Section>
+
+          <PacotesDoCliente clienteId={cliente.id} podeVender={ehEquipeAdministrativa(usuario)} />
 
           <Section title="Atendimentos">
             {historico.atendimentos.length === 0 ? (
