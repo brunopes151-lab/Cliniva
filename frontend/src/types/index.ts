@@ -378,3 +378,82 @@ export interface VenderPacoteInput {
   dataCompra?: string
   valorPago?: number
 }
+
+export type AreaFicha = 'ESTETICA' | 'FISIOTERAPIA' | 'GERAL'
+export type TipoRegistro = 'ANAMNESE' | 'AVALIACAO_INICIAL' | 'PLANO_TERAPEUTICO' | 'EVOLUCAO' | 'REAVALIACAO'
+export type TipoCampo = 'TEXTO' | 'TEXTO_LONGO' | 'NUMERO' | 'SIM_NAO' | 'ESCALA' | 'OPCOES' | 'DATA'
+
+export const AREA_FICHA_LABEL: Record<AreaFicha, string> = {
+  ESTETICA: 'Estética',
+  FISIOTERAPIA: 'Fisioterapia',
+  GERAL: 'Geral',
+}
+
+export const TIPO_REGISTRO_LABEL: Record<TipoRegistro, string> = {
+  ANAMNESE: 'Anamnese',
+  AVALIACAO_INICIAL: 'Avaliação inicial',
+  PLANO_TERAPEUTICO: 'Plano terapêutico',
+  EVOLUCAO: 'Evolução',
+  REAVALIACAO: 'Reavaliação',
+}
+
+export const TIPO_CAMPO_LABEL: Record<TipoCampo, string> = {
+  TEXTO: 'Texto curto',
+  TEXTO_LONGO: 'Texto longo',
+  NUMERO: 'Número',
+  SIM_NAO: 'Sim ou não',
+  ESCALA: 'Escala de 0 a 10',
+  OPCOES: 'Escolha entre opções',
+  DATA: 'Data',
+}
+
+export interface CampoFicha {
+  id: string
+  rotulo: string
+  tipo: TipoCampo
+  obrigatorio: boolean
+  opcoes: string[] | null
+}
+
+export interface ModeloFicha {
+  id: string
+  familiaId: string
+  versao: number
+  nome: string
+  area: AreaFicha
+  tipo: TipoRegistro
+  campos: CampoFicha[]
+  ativo: boolean
+}
+
+export interface ModeloFichaInput {
+  nome: string
+  area: AreaFicha
+  tipo: TipoRegistro
+  campos: CampoFicha[]
+}
+
+export type RespostaFicha = string | number | boolean
+export type ConteudoFicha = Record<string, RespostaFicha>
+
+export interface VersaoRegistro {
+  numero: number
+  criadoEm: string
+  autorNome: string
+  motivo: string | null
+  modelo: ModeloFicha
+  conteudo: ConteudoFicha
+}
+
+export interface RegistroClinico {
+  id: string
+  tipo: TipoRegistro
+  criadoEm: string
+  profissionalId: string
+  profissionalNome: string
+  atendimentoId: string | null
+  dataAtendimento: string | null
+  versoes: number
+  podeCorrigir: boolean
+  atual: VersaoRegistro
+}

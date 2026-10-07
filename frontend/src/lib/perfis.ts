@@ -23,3 +23,8 @@ export function ehProfissional(usuario: ComPapel | null | undefined): boolean {
 export function telaInicial(usuario: ComPapel | null | undefined): string {
   return ehEquipeAdministrativa(usuario) ? '/dashboard' : '/agenda'
 }
+
+/** Prontuário: administração e profissionais. A recepção não vê conteúdo clínico. */
+export function veProntuario(usuario: ComPapel | null | undefined): boolean {
+  return !!usuario && usuario.papel !== 'RECEPCAO'
+}

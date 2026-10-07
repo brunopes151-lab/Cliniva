@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { clientesApi } from '@/api/clientesApi'
 import { PacotesDoCliente } from '@/components/pacotes/PacotesDoCliente'
+import { ProntuarioPaciente } from '@/components/prontuario/ProntuarioPaciente'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ErrorBanner } from '@/components/ui/ErrorBanner'
@@ -12,7 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
 import { useAuth } from '@/hooks/useAuth'
-import { ehEquipeAdministrativa } from '@/lib/perfis'
+import { ehEquipeAdministrativa, veProntuario } from '@/lib/perfis'
 import {
   canalLabel,
   fidelidadeLabel,
@@ -60,6 +61,9 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 export function ClienteDetalhePage() {
   const { marca } = useMarca()
   const { usuario } = useAuth()
+  const [params, setParams] = useSearchParams()
+  const comProntuario = veProntuario(usuario)
+  const aba = comProntuario && params.get('aba') === 'prontuario' ? 'prontuario' : 'ficha'
   const { id } = useParams<{ id: string }>()
   const {
     data: historico,
@@ -158,6 +162,35 @@ export function ClienteDetalhePage() {
         )}
       </div>
 
+      {comProntuario && (
+        <div role="tablist" className="mb-10 flex gap-6 border-b border-hairline">
+          {[
+            { id: 'ficha', label: 'Ficha' },
+            { id: 'prontuario', label: 'Prontuário' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={aba === t.id}
+              onClick={() => setParams(t.id === 'ficha' ? {} : { aba: t.id }, { replace: true })}
+              className={`-mb-px cursor-pointer border-b-2 pb-3 text-[11px] font-medium uppercase tracking-[0.18em] transition-colors ${
+                aba === t.id ? 'border-accent text-ink' : 'border-transparent text-ink-soft hover:text-ink'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {aba === 'prontuario' ? (
+        <ProntuarioPaciente
+          clienteId={cliente.id}
+          podeRegistrar={!!usuario?.profissionalId && usuario.papel !== 'ADMIN' && usuario.papel !== 'RECEPCAO'}
+          atendimentos={historico.atendimentos}
+        />
+      ) : (
+      <>
       {errorNotas && <ErrorBanner message={errorNotas} />}
 
       <div className="grid grid-cols-1 gap-x-14 gap-y-14 lg:grid-cols-3">
@@ -257,6 +290,8 @@ export function ClienteDetalhePage() {
           </Section>
         </div>
       </div>
+      </>
+      )}
     </>
   )
 }
