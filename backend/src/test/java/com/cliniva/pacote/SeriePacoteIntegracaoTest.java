@@ -177,6 +177,29 @@ class SeriePacoteIntegracaoTest {
     }
 
     @Test
+    void sessaoDePacoteNaoSomaDeNovoNoFaturamento() throws Exception {
+        String modelo = criarModelo(5, 90);
+        mockMvc.perform(com(recepcao, post("/api/clientes/" + paciente.getId() + "/pacotes"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"pacoteId\":\"" + modelo + "\"}"))
+                .andExpect(status().isCreated());
+        String atendimento = lerJson(agendarAvulso(proximaSegunda().atTime(15, 0)).andExpect(status().isCreated()))
+                .get("id").asText();
+
+        mudarStatus(atendimento, "CONCLUIDO").andExpect(status().isOk())
+                .andExpect(jsonPath("$.valorTotal").value(0));
+        // O paciente pagou o pacote (500), não mais 120 pela sessão.
+        mockMvc.perform(com(dono, get("/api/clientes/" + paciente.getId() + "/historico")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gastoTotal").value(500.0));
+
+        // Voltou a agendado: a sessão volta ao pacote e o serviço volta a valer 120.
+        mudarStatus(atendimento, "AGENDADO").andExpect(status().isOk())
+                .andExpect(jsonPath("$.valorTotal").value(120.0));
+        mudarStatus(atendimento, "CONCLUIDO").andExpect(status().isOk())
+                .andExpect(jsonPath("$.valorTotal").value(0));
+    }
+
+    @Test
     void pacoteVencidoNaoDaBaixa() throws Exception {
         String modelo = criarModelo(5, 30);
         String dataAntiga = LocalDate.now(clock).minusDays(60).toString();

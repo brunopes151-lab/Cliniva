@@ -1,5 +1,7 @@
 package com.cliniva.cliente;
 
+import static org.mockito.Mockito.lenient;
+import org.junit.jupiter.api.BeforeEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -70,6 +72,11 @@ class ClienteServiceTest {
 
     @InjectMocks
     private ClienteService clienteService;
+
+    @BeforeEach
+    void semVendasDePacote() {
+        lenient().when(pacoteClienteRepository.somarCompradoPeloCliente(org.mockito.ArgumentMatchers.any())).thenReturn(BigDecimal.ZERO);
+    }
 
     private static final ClienteStatus STATUS_DEFAULT = ClienteStatus.PROSPECT;
 

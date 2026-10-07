@@ -236,9 +236,12 @@ public class ClienteService {
                 .filter(atendimento -> atendimento.status() == StatusAtendimento.CONCLUIDO)
                 .toList();
         long atendimentosConcluidos = concluidos.size();
+        // Sessão de pacote vale zero no atendimento; o que o paciente pagou
+        // pelo pacote entra aqui.
         BigDecimal gastoTotal = concluidos.stream()
                 .map(AtendimentoResponseDTO::valorTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .add(restrito.isEmpty() ? pacoteClienteRepository.somarCompradoPeloCliente(id) : BigDecimal.ZERO);
         BigDecimal ticketMedio = atendimentosConcluidos > 0
                 ? gastoTotal.divide(BigDecimal.valueOf(atendimentosConcluidos), 2, RoundingMode.HALF_UP)
                 : null;

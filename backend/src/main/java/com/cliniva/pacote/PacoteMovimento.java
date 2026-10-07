@@ -1,9 +1,11 @@
 package com.cliniva.pacote;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.cliniva.atendimento.model.Atendimento;
+import com.cliniva.servico.Servico;
 import com.cliniva.tenancy.Clinica;
 
 import jakarta.persistence.Column;
@@ -44,6 +46,15 @@ public class PacoteMovimento {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "atendimento_id")
     private Atendimento atendimento;
+
+    /** Serviço do atendimento que a baixa zerou (ou que o estorno devolveu). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "servico_id")
+    private Servico servico;
+
+    /** Valor que o serviço tinha antes da baixa; o estorno o devolve. */
+    @Column(name = "valor_cobrado", precision = 10, scale = 2)
+    private BigDecimal valorCobrado;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo", nullable = false, length = 20)

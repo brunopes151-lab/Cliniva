@@ -25,6 +25,7 @@ import com.cliniva.atendimento.enums.StatusAtendimento;
 import com.cliniva.atendimento.repository.AtendimentoRepository;
 import com.cliniva.atendimento.repository.AtendimentoServicoRepository;
 import com.cliniva.cliente.ClienteRepository;
+import com.cliniva.pacote.PacoteClienteRepository;
 import com.cliniva.exception.RecursoDuplicadoException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.exception.SupabaseIndisponivelException;
@@ -48,6 +49,7 @@ public class AdminService {
     private final ClienteRepository clienteRepository;
     private final AtendimentoRepository atendimentoRepository;
     private final AtendimentoServicoRepository atendimentoServicoRepository;
+    private final PacoteClienteRepository pacoteClienteRepository;
     private final SupabaseUsersService supabaseUsers;
 
     @Transactional(readOnly = true)
@@ -152,8 +154,7 @@ public class AdminService {
     public MetricasAdminResponseDTO metricas() {
         Map<String, Long> clientesPorClinica = agruparContagens(clienteRepository.contarPorClinica());
         Map<String, Long> atendimentosPorClinica = agruparContagens(atendimentoRepository.contarPorClinica());
-        Map<String, BigDecimal> receitaPorClinica = agruparSomatorio(
-                atendimentoServicoRepository.totalCobradoPorClinica(StatusAtendimento.CONCLUIDO));
+        Map<String, BigDecimal> receitaPorClinica = receitaPorClinica();
 
         List<MetricaClinicaDTO> porClinica = clinicaRepository.findAll().stream()
                 .sorted(Comparator.comparing(Clinica::getNome))
@@ -199,12 +200,16 @@ public class AdminService {
     }
 
     private BigDecimal receitaDaClinica(UUID clinicaId) {
-        return atendimentoServicoRepository
-                .totalCobradoPorClinica(StatusAtendimento.CONCLUIDO).stream()
-                .filter(linha -> linha[0].toString().equals(clinicaId.toString()))
-                .findFirst()
-                .map(linha -> (BigDecimal) linha[1])
-                .orElse(BigDecimal.ZERO);
+        return receitaPorClinica().getOrDefault(clinicaId.toString(), BigDecimal.ZERO);
+    }
+
+    /** Atendimentos concluídos mais vendas de pacote (sessão de pacote vale zero). */
+    private Map<String, BigDecimal> receitaPorClinica() {
+        Map<String, BigDecimal> receita = agruparSomatorio(
+                atendimentoServicoRepository.totalCobradoPorClinica(StatusAtendimento.CONCLUIDO));
+        agruparSomatorio(pacoteClienteRepository.totalVendidoPorClinica())
+                .forEach((clinica, valor) -> receita.merge(clinica, valor, BigDecimal::add));
+        return receita;
     }
 
     private Map<String, Long> agruparContagens(List<Object[]> linhas) {

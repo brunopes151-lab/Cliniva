@@ -1,5 +1,7 @@
 package com.cliniva.admin;
 
+import static org.mockito.Mockito.lenient;
+import org.junit.jupiter.api.BeforeEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -54,8 +56,16 @@ class AdminServiceTest {
     @Mock
     private SupabaseUsersService supabaseUsers;
 
+    @Mock
+    private com.cliniva.pacote.PacoteClienteRepository pacoteClienteRepository;
+
     @InjectMocks
     private AdminService adminService;
+
+    @BeforeEach
+    void semVendasDePacote() {
+        lenient().when(pacoteClienteRepository.totalVendidoPorClinica()).thenReturn(new java.util.ArrayList<>());
+    }
 
     private Usuario usuario(String email) {
         Usuario usuario = new Usuario();

@@ -21,6 +21,7 @@ import com.cliniva.cliente.Cliente;
 import com.cliniva.cliente.ClienteRepository;
 import com.cliniva.item.Item;
 import com.cliniva.item.ItemRepository;
+import com.cliniva.pacote.PacoteClienteRepository;
 import com.cliniva.tenancy.Clinica;
 
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class ResumoAgregador {
     private final AtendimentoServicoRepository atendimentoServicoRepository;
     private final ClienteRepository clienteRepository;
     private final ItemRepository itemRepository;
+    private final PacoteClienteRepository pacoteClienteRepository;
 
     @Transactional(readOnly = true)
     public ResumoContexto agregar(Clinica clinica, LocalDate hoje, ZoneId zona) {
@@ -48,8 +50,10 @@ public class ResumoAgregador {
 
         BigDecimal receitaPrevista = atendimentoServicoRepository
                 .somarValorCobradoPorStatusEPeriodo(clinica, StatusAtendimento.AGENDADO, inicioDia, fimDia);
+        // Sessão de pacote vale zero no atendimento; o pacote entra no dia da venda.
         BigDecimal receitaRealizada = atendimentoServicoRepository
-                .somarValorCobradoPorStatusEPeriodo(clinica, StatusAtendimento.CONCLUIDO, inicioDia, fimDia);
+                .somarValorCobradoPorStatusEPeriodo(clinica, StatusAtendimento.CONCLUIDO, inicioDia, fimDia)
+                .add(pacoteClienteRepository.somarVendas(clinica.getId(), hoje, hoje));
 
         int[] novosERecorrentes = calcularNovosERecorrentes(clinica, hoje, zona);
 

@@ -1,5 +1,7 @@
 package com.cliniva.resumo;
 
+import static org.mockito.Mockito.lenient;
+import org.junit.jupiter.api.BeforeEach;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,8 +45,16 @@ class ResumoAgregadorTest {
     @Mock
     private ItemRepository itemRepository;
 
+    @Mock
+    private com.cliniva.pacote.PacoteClienteRepository pacoteClienteRepository;
+
     @InjectMocks
     private ResumoAgregador agregador;
+
+    @BeforeEach
+    void semVendasDePacote() {
+        lenient().when(pacoteClienteRepository.somarVendas(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(BigDecimal.ZERO);
+    }
 
     @Test
     void deveAgregarNumerosDoDiaIgnorandoCancelados() {
@@ -60,6 +70,8 @@ class ResumoAgregadorTest {
                 eq(StatusAtendimento.AGENDADO), any(), any())).thenReturn(new BigDecimal("150.00"));
         when(atendimentoServicoRepository.somarValorCobradoPorStatusEPeriodo(eq(clinica),
                 eq(StatusAtendimento.CONCLUIDO), any(), any())).thenReturn(new BigDecimal("90.00"));
+        // Pacote vendido hoje entra no realizado do dia.
+        when(pacoteClienteRepository.somarVendas(clinica.getId(), HOJE, HOJE)).thenReturn(new BigDecimal("500.00"));
         when(atendimentoRepository.findByClinicaAndDataAtendimentoBefore(eq(clinica), any()))
                 .thenReturn(List.of(atendimento(clinica, "2026-08-10T10:00", StatusAtendimento.CONCLUIDO,
                         cliente("1").getId())));
@@ -75,7 +87,7 @@ class ResumoAgregadorTest {
 
         assertThat(contexto.atendimentosHoje()).isEqualTo(1);
         assertThat(contexto.receitaPrevista()).isEqualByComparingTo("150.00");
-        assertThat(contexto.receitaRealizada()).isEqualByComparingTo("90.00");
+        assertThat(contexto.receitaRealizada()).isEqualByComparingTo("590.00");
         assertThat(contexto.novosMes()).isZero();
         assertThat(contexto.recorrentesMes()).isEqualTo(1);
         assertThat(contexto.aniversariantesHoje()).isEqualTo(2);

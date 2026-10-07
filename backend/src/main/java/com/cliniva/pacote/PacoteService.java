@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -176,7 +178,11 @@ public class PacoteService {
                             StatusPacoteCliente.ATIVO);
             for (PacoteCliente pc : candidatos) {
                 if (pc.usavelEm(dia) && pacoteClienteRepository.debitarSessao(pc.getId()) == 1) {
-                    registrar(clinica, pc, atendimento, TipoMovimentoPacote.BAIXA);
+                    // A sessão já foi paga na venda do pacote: não soma de novo.
+                    BigDecimal valor = as.getValorCobrado();
+                    as.setValorCobrado(BigDecimal.ZERO);
+                    atendimentoServicoRepository.save(as);
+                    registrar(clinica, pc, atendimento, TipoMovimentoPacote.BAIXA, as.getServico(), valor);
                     break;
                 }
             }
@@ -186,28 +192,46 @@ public class PacoteService {
     /**
      * O atendimento deixou de estar concluído (cancelado ou voltou para
      * agendado): devolve cada sessão que ele tinha baixado e ainda não foi
-     * devolvida.
+     * devolvida, e o serviço volta a ter o valor que tinha.
      */
     @Transactional
     public void estornarSessoes(Atendimento atendimento) {
-        Map<UUID, Integer> pendentes = new LinkedHashMap<>();
-        Map<UUID, PacoteCliente> pacotes = new HashMap<>();
+        // Baixas ainda não estornadas, por pacote, na ordem em que aconteceram.
+        Map<UUID, Deque<PacoteMovimento>> abertas = new LinkedHashMap<>();
         for (PacoteMovimento m : movimentoRepository.findByAtendimento_IdOrderByCriadoEmAsc(atendimento.getId())) {
-            UUID id = m.getPacoteCliente().getId();
-            pacotes.put(id, m.getPacoteCliente());
-            pendentes.merge(id, m.getTipo() == TipoMovimentoPacote.BAIXA ? 1 : -1, Integer::sum);
+            Deque<PacoteMovimento> pilha = abertas.computeIfAbsent(m.getPacoteCliente().getId(),
+                    id -> new ArrayDeque<>());
+            if (m.getTipo() == TipoMovimentoPacote.BAIXA) {
+                pilha.push(m);
+            } else {
+                pilha.poll();
+            }
         }
-        pendentes.forEach((id, quantidade) -> {
-            for (int i = 0; i < quantidade; i++) {
-                if (pacoteClienteRepository.devolverSessao(id) == 1) {
-                    registrar(atendimento.getClinica(), pacotes.get(id), atendimento, TipoMovimentoPacote.ESTORNO);
+        Map<UUID, AtendimentoServico> servicos = new HashMap<>();
+        for (AtendimentoServico as : atendimentoServicoRepository.findByAtendimento(atendimento)) {
+            servicos.put(as.getServico().getId(), as);
+        }
+        abertas.forEach((id, pilha) -> {
+            for (PacoteMovimento baixa : pilha) {
+                if (pacoteClienteRepository.devolverSessao(id) != 1) {
+                    continue;
                 }
+                AtendimentoServico as = baixa.getServico() == null ? null : servicos.get(baixa.getServico().getId());
+                if (as != null && baixa.getValorCobrado() != null) {
+                    as.setValorCobrado(baixa.getValorCobrado());
+                    atendimentoServicoRepository.save(as);
+                }
+                registrar(atendimento.getClinica(), baixa.getPacoteCliente(), atendimento,
+                        TipoMovimentoPacote.ESTORNO, baixa.getServico(), baixa.getValorCobrado());
             }
         });
     }
 
-    private void registrar(Clinica clinica, PacoteCliente pc, Atendimento atendimento, TipoMovimentoPacote tipo) {
+    private void registrar(Clinica clinica, PacoteCliente pc, Atendimento atendimento, TipoMovimentoPacote tipo,
+            Servico servico, BigDecimal valorCobrado) {
         PacoteMovimento m = new PacoteMovimento();
+        m.setServico(servico);
+        m.setValorCobrado(valorCobrado);
         m.setClinica(clinica);
         m.setPacoteCliente(pc);
         m.setAtendimento(atendimento);
