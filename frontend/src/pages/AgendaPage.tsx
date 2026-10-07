@@ -24,12 +24,16 @@ import type {
   AtendimentoInput,
   Cliente,
   DisponibilidadeDia,
+  FrequenciaSerie,
   HorarioAtendimento,
   Item,
+  PreviaSerie,
   Profissional,
+  SerieInput,
   Servico,
   StatusAtendimento,
 } from '@/types'
+import { FREQUENCIA_LABEL } from '@/types'
 import { formatDataHora, formatDataLonga, formatMoeda, whatsappLink } from '@/utils/format'
 import { useMarca } from '@/hooks/useMarca'
 
@@ -52,8 +56,11 @@ function hojeISO(): string {
   return toISODate(agora)
 }
 
-/** Limite da janela de agendamento — mesma regra de 30 dias do backend. */
-const JANELA_DIAS = 30
+/**
+ * Até onde a equipe pode marcar, inclusive séries — mesma regra do backend
+ * (JANELA_INTERNA_DIAS). O link público continua limitado a 30 dias.
+ */
+const JANELA_DIAS = 180
 
 function dataMaximaISO(): string {
   const dt = new Date()
@@ -64,6 +71,28 @@ function dataMaximaISO(): string {
 function formatDataLongaISO(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
   return formatDataLonga(new Date(a, m - 1, d).toISOString())
+}
+
+function formatOcorrencia(iso: string): string {
+  const [a, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const dia = new Date(a, m - 1, d).toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+  return `${dia} · ${iso.slice(11, 16)}`
+}
+
+function SerieTag() {
+  return (
+    <span
+      title="Faz parte de uma série de sessões"
+      className="ml-2 inline-block border border-hairline px-1.5 py-0.5 align-middle text-[10px] font-medium uppercase tracking-[0.14em] text-ink-soft"
+    >
+      Série
+    </span>
+  )
 }
 
 function normalizeDatetimeLocal(value: string): string {
@@ -172,6 +201,16 @@ export function AgendaPage() {
   const [acaoStatus, setAcaoStatus] = useState<{ atendimento: AgendaItem; acao: 'concluir' | 'cancelar' } | null>(null)
   const [acaoErro, setAcaoErro] = useState('')
 
+  // Repetição: a prévia vale só para o formulário exatamente como estava
+  // quando foi pedida (chave = pedido serializado).
+  const [repetir, setRepetir] = useState(false)
+  const [frequencia, setFrequencia] = useState<FrequenciaSerie>('SEMANAL')
+  const [incluiSabado, setIncluiSabado] = useState(false)
+  const [fimPor, setFimPor] = useState<'quantidade' | 'data'>('quantidade')
+  const [quantidade, setQuantidade] = useState(10)
+  const [dataFimSerie, setDataFimSerie] = useState('')
+  const [previa, setPrevia] = useState<{ chave: string; resultado: PreviaSerie } | null>(null)
+
   const abrirCriar = () => {
     setClienteId('')
     setProfissionalId(restrito ? (usuario?.profissionalId ?? '') : filtroProfissional)
@@ -182,6 +221,13 @@ export function AgendaPage() {
     setBuscaServico('')
     setBuscaData(hojeISO())
     setBuscarErro('')
+    setRepetir(false)
+    setFrequencia('SEMANAL')
+    setIncluiSabado(false)
+    setFimPor('quantidade')
+    setQuantidade(10)
+    setDataFimSerie('')
+    setPrevia(null)
     setCriando(true)
   }
 
@@ -257,6 +303,20 @@ export function AgendaPage() {
     }
   }
 
+  const montarPayload = (): AtendimentoInput => ({
+    clienteId,
+    profissionalId,
+    dataAtendimento: normalizeDatetimeLocal(dataAtendimento),
+    servicos: servicosForm
+      .filter((row) => row.servicoId)
+      .map((row) => ({
+        servicoId: row.servicoId,
+        itensExtras: row.itensExtras
+          .filter((extra) => extra.itemId && extra.quantidade > 0)
+          .map((extra) => ({ itemId: extra.itemId, quantidade: extra.quantidade })),
+      })),
+  })
+
   const salvarAtendimento = async () => {
     if (!clienteId) {
       setCriarErro('Selecione o cliente.')
@@ -276,16 +336,11 @@ export function AgendaPage() {
       return
     }
 
-    const payload: AtendimentoInput = {
-      clienteId,
-      profissionalId,
-      dataAtendimento: normalizeDatetimeLocal(dataAtendimento),
-      servicos: servicosValidos.map((row) => ({
-        servicoId: row.servicoId,
-        itensExtras: row.itensExtras
-          .filter((extra) => extra.itemId && extra.quantidade > 0)
-          .map((extra) => ({ itemId: extra.itemId, quantidade: extra.quantidade })),
-      })),
+    const payload = montarPayload()
+
+    if (repetir) {
+      await salvarSerie(payload)
+      return
     }
 
     setSalvando(true)
@@ -305,6 +360,64 @@ export function AgendaPage() {
       setAviso('Atendimento agendado com sucesso.')
     } catch (err) {
       setCriarErro(err instanceof Error ? err.message : 'Falha ao criar atendimento.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const montarSerie = (payload: AtendimentoInput): SerieInput | string => {
+    if (payload.servicos.some((s) => s.itensExtras.length > 0)) {
+      return 'Itens extras não entram em série. Remova-os ou agende sem repetir.'
+    }
+    if (fimPor === 'quantidade' && (!quantidade || quantidade < 1 || quantidade > 100)) {
+      return 'A série tem de 1 a 100 sessões.'
+    }
+    if (fimPor === 'data' && !dataFimSerie) {
+      return 'Informe até quando a série vai.'
+    }
+    if (fimPor === 'data' && dataFimSerie < payload.dataAtendimento.slice(0, 10)) {
+      return 'A data final precisa ser depois da primeira sessão.'
+    }
+    return {
+      clienteId: payload.clienteId,
+      profissionalId: payload.profissionalId,
+      servicos: payload.servicos,
+      inicio: payload.dataAtendimento,
+      frequencia,
+      incluiSabado,
+      dataFim: fimPor === 'data' ? dataFimSerie : null,
+      quantidade: fimPor === 'quantidade' ? quantidade : null,
+    }
+  }
+
+  // Primeiro clique mostra as datas; o segundo (com a prévia ainda válida) marca.
+  const salvarSerie = async (payload: AtendimentoInput) => {
+    const serie = montarSerie(payload)
+    if (typeof serie === 'string') {
+      setCriarErro(serie)
+      return
+    }
+    const chave = JSON.stringify(serie)
+    setSalvando(true)
+    setCriarErro('')
+    setAviso('')
+    try {
+      if (previa?.chave !== chave) {
+        setPrevia({ chave, resultado: await atendimentosApi.previaSerie(serie) })
+        return
+      }
+      const criada = await atendimentosApi.criarSerie(serie)
+      setCriando(false)
+      const primeiro = criada.criados.length > 0 ? serie.inicio.slice(0, 10) : data
+      if (primeiro !== data) setData(primeiro)
+      else refetch()
+      const puladas = criada.puladas.length
+      setAviso(
+        `${criada.criados.length} ${criada.criados.length === 1 ? 'sessão agendada' : 'sessões agendadas'}` +
+          (puladas > 0 ? `; ${puladas} ${puladas === 1 ? 'data ficou' : 'datas ficaram'} de fora.` : '.'),
+      )
+    } catch (err) {
+      setCriarErro(err instanceof Error ? err.message : 'Falha ao agendar a série.')
     } finally {
       setSalvando(false)
     }
@@ -339,13 +452,18 @@ export function AgendaPage() {
     }
   }
 
-  const confirmarAcao = async () => {
+  const confirmarAcao = async (seguintes = false) => {
     if (!acaoStatus) return
     setSalvando(true)
     setAcaoErro('')
     try {
-      const novoStatus: StatusAtendimento = acaoStatus.acao === 'concluir' ? 'CONCLUIDO' : 'CANCELADO'
-      await atendimentosApi.alterarStatus(acaoStatus.atendimento.id, novoStatus)
+      if (seguintes) {
+        const { cancelados } = await atendimentosApi.cancelarSeguintes(acaoStatus.atendimento.id)
+        setAviso(`${cancelados} ${cancelados === 1 ? 'sessão cancelada' : 'sessões canceladas'} na série.`)
+      } else {
+        const novoStatus: StatusAtendimento = acaoStatus.acao === 'concluir' ? 'CONCLUIDO' : 'CANCELADO'
+        await atendimentosApi.alterarStatus(acaoStatus.atendimento.id, novoStatus)
+      }
       setAcaoStatus(null)
       refetch()
     } catch (err) {
@@ -412,7 +530,18 @@ export function AgendaPage() {
 
   const servicosEscolhidos = servicosForm.map((row) => row.servicoId).filter(Boolean)
 
+  // A prévia mostrada só vale se o formulário não mudou desde que foi pedida.
+  const serieAtual = (() => {
+    if (!repetir || !clienteId || !profissionalId || !dataAtendimento) return null
+    const r = montarSerie(montarPayload())
+    return typeof r === 'string' ? null : JSON.stringify(r)
+  })()
+  const previaValida = previa !== null && previa.chave === serieAtual
+
   const acaoConcluindo = acaoStatus?.acao === 'concluir'
+  // Só um agendamento ainda em aberto de uma série oferece "este e os seguintes".
+  const cancelandoSerie =
+    acaoStatus?.acao === 'cancelar' && !!acaoStatus.atendimento.serieId && acaoStatus.atendimento.status === 'AGENDADO'
   const acaoMensagem = acaoStatus
     ? acaoConcluindo
       ? `Confirmar conclusão do atendimento de ${acaoStatus.atendimento.clienteNome}?`
@@ -493,7 +622,10 @@ export function AgendaPage() {
             {itens.map((atendimento) => (
               <CardItem key={atendimento.id}>
                 <div className="flex items-start justify-between gap-3">
-                  <CardLabel>{atendimento.clienteNome}</CardLabel>
+                  <CardLabel>
+                    {atendimento.clienteNome}
+                    {atendimento.serieId && <SerieTag />}
+                  </CardLabel>
                   <div className="shrink-0">
                     <StatusBadge status={atendimento.status} />
                   </div>
@@ -569,7 +701,10 @@ export function AgendaPage() {
                     <td className="py-4 pr-8 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft">
                       {atendimento.inicio.slice(11, 16)}–{atendimento.fim.slice(11, 16)}
                     </td>
-                    <td className="py-4 pr-8 font-medium text-ink">{atendimento.clienteNome}</td>
+                    <td className="py-4 pr-8 font-medium text-ink">
+                      {atendimento.clienteNome}
+                      {atendimento.serieId && <SerieTag />}
+                    </td>
                     {!restrito && (
                       <td className="max-w-[12rem] py-4 pr-8 text-ink-soft">
                         <ProfissionalTag nome={atendimento.profissionalNome} cor={atendimento.profissionalCor} />
@@ -815,14 +950,16 @@ export function AgendaPage() {
                       ))}
                     </div>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => adicionarItemExtra(rowIndex)}
-                  >
-                    + Item extra
-                  </Button>
+                  {!repetir && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => adicionarItemExtra(rowIndex)}
+                    >
+                      + Item extra
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -831,14 +968,101 @@ export function AgendaPage() {
             </Button>
           </div>
 
+          <div className="border border-hairline bg-ivory p-4">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink">
+              <input type="checkbox" checked={repetir} onChange={(e) => setRepetir(e.target.checked)} />
+              Repetir este agendamento
+            </label>
+            {repetir && (
+              <div className="mt-4 flex flex-col gap-4">
+                <Select
+                  label="Frequência"
+                  value={frequencia}
+                  onChange={(e) => setFrequencia(e.target.value as FrequenciaSerie)}
+                >
+                  {(Object.keys(FREQUENCIA_LABEL) as FrequenciaSerie[]).map((f) => (
+                    <option key={f} value={f}>
+                      {FREQUENCIA_LABEL[f]}
+                    </option>
+                  ))}
+                </Select>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" checked={incluiSabado} onChange={(e) => setIncluiSabado(e.target.checked)} />
+                  Incluir sábados (domingo nunca entra)
+                </label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <Select
+                    label="Termina"
+                    value={fimPor}
+                    onChange={(e) => setFimPor(e.target.value as 'quantidade' | 'data')}
+                    className="sm:w-48"
+                  >
+                    <option value="quantidade">Depois de N sessões</option>
+                    <option value="data">Em uma data</option>
+                  </Select>
+                  {fimPor === 'quantidade' ? (
+                    <TextField
+                      label="Sessões"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={quantidade}
+                      onChange={(e) => setQuantidade(Number(e.target.value))}
+                      className="w-full sm:w-28"
+                    />
+                  ) : (
+                    <TextField
+                      label="Até"
+                      type="date"
+                      min={dataAtendimento.slice(0, 10) || hojeISO()}
+                      max={dataMaximaISO()}
+                      value={dataFimSerie}
+                      onChange={(e) => setDataFimSerie(e.target.value)}
+                      className="w-full sm:w-44"
+                    />
+                  )}
+                </div>
+                <p className="text-sm text-ink-soft">
+                  Datas sem expediente ou com horário ocupado ficam de fora e aparecem na lista antes de confirmar.
+                  Itens extras não entram em série.
+                </p>
+                {previa && (
+                  <div>
+                    <p className={`mb-2 ${microLabel}`}>
+                      {previa.resultado.disponiveis} livres · {previa.resultado.puladas} de fora
+                    </p>
+                    <ul className="max-h-60 divide-y divide-hairline overflow-y-auto border-y border-hairline">
+                      {previa.resultado.ocorrencias.map((o) => (
+                        <li key={o.dataHora} className="flex flex-col gap-0.5 py-2 text-sm sm:flex-row sm:justify-between sm:gap-4">
+                          <span className={`font-mono text-[12px] ${o.disponivel ? 'text-ink' : 'text-ink-soft line-through'}`}>
+                            {formatOcorrencia(o.dataHora)}
+                          </span>
+                          <span className={o.disponivel ? 'text-sage-dark' : 'text-red-600'}>
+                            {o.disponivel ? 'Livre' : o.motivo}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {criarErro && <p className="text-sm text-red-600">{criarErro}</p>}
 
           <div className="mt-2 flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setCriando(false)}>
               Cancelar
             </Button>
-            <Button onClick={salvarAtendimento} disabled={salvando}>
-              {salvando ? 'Salvando...' : 'Agendar'}
+            <Button onClick={salvarAtendimento} disabled={salvando || (previaValida && previa?.resultado.disponiveis === 0)}>
+              {salvando
+                ? 'Salvando...'
+                : !repetir
+                  ? 'Agendar'
+                  : previaValida && previa
+                    ? `Agendar ${previa.resultado.disponiveis} ${previa.resultado.disponiveis === 1 ? 'sessão' : 'sessões'}`
+                    : 'Ver datas'}
             </Button>
           </div>
         </div>
@@ -970,15 +1194,45 @@ export function AgendaPage() {
         </div>
       </Modal>
 
+      <Modal
+        open={cancelandoSerie}
+        title="Cancelar sessão da série"
+        onClose={() => {
+          if (salvando) return
+          setAcaoStatus(null)
+          setAcaoErro('')
+        }}
+        bloqueiaFechamento={salvando}
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-ink">
+            {acaoStatus?.atendimento.clienteNome}, {acaoStatus ? formatDataHora(acaoStatus.atendimento.inicio) : ''}.
+            Cancelar só esta sessão ou esta e todas as seguintes ainda agendadas?
+          </p>
+          {acaoErro && <p className="text-sm text-red-600">{acaoErro}</p>}
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={() => setAcaoStatus(null)} disabled={salvando}>
+              Voltar
+            </Button>
+            <Button variant="secondary" onClick={() => confirmarAcao(false)} disabled={salvando}>
+              Só esta
+            </Button>
+            <Button variant="danger" onClick={() => confirmarAcao(true)} disabled={salvando}>
+              {salvando ? 'Cancelando...' : 'Esta e as seguintes'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <ConfirmDialog
-        open={acaoStatus !== null}
+        open={acaoStatus !== null && !cancelandoSerie}
         title={acaoConcluindo ? 'Concluir atendimento' : 'Cancelar atendimento'}
         message={acaoMensagem}
         confirmLabel={acaoConcluindo ? 'Concluir' : 'Cancelar atendimento'}
         error={acaoErro}
         pending={salvando}
         pendingLabel={acaoConcluindo ? 'Concluindo...' : 'Cancelando...'}
-        onConfirm={confirmarAcao}
+        onConfirm={() => confirmarAcao()}
         onCancel={() => {
           if (salvando) return
           setAcaoStatus(null)

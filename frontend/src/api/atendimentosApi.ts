@@ -5,6 +5,9 @@ import type {
   AtendimentoInput,
   AtendimentoResumo,
   AtendimentoUpdate,
+  PreviaSerie,
+  SerieCriada,
+  SerieInput,
   StatusAtendimento,
 } from '@/types'
 
@@ -26,4 +29,8 @@ export const atendimentosApi = {
   atualizar: (id: string, input: AtendimentoUpdate) => http.put<Atendimento>(`/atendimentos/${id}`, input),
   alterarStatus: (id: string, novoStatus: StatusAtendimento) =>
     http.patch<Atendimento>(`/atendimentos/${id}/status`, { novoStatus }),
+  previaSerie: (input: SerieInput) => http.post<PreviaSerie>('/atendimentos/series/previa', input),
+  criarSerie: (input: SerieInput) => http.post<SerieCriada>('/atendimentos/series', input),
+  cancelarSeguintes: (id: string) =>
+    http.post<{ cancelados: number }>(`/atendimentos/${id}/cancelar-seguintes`, {}),
 }
