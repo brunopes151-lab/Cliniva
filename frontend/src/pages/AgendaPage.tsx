@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { agendaApi } from '@/api/agendaApi'
 import { atendimentosApi } from '@/api/atendimentosApi'
 import { clientesApi } from '@/api/clientesApi'
+import { profissionaisApi } from '@/api/equipeApi'
 import { itensApi } from '@/api/itensApi'
 import { servicosApi } from '@/api/servicosApi'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +17,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
+import { useAuth } from '@/hooks/useAuth'
+import { ehAdministracao, ehProfissional } from '@/lib/perfis'
 import type {
   AgendaItem,
   AtendimentoInput,
@@ -23,6 +26,7 @@ import type {
   DisponibilidadeDia,
   HorarioAtendimento,
   Item,
+  Profissional,
   Servico,
   StatusAtendimento,
 } from '@/types'
@@ -82,6 +86,30 @@ const microLabel = 'text-[11px] font-medium uppercase tracking-[0.18em] text-ink
 const lembrarLink =
   'inline-flex cursor-pointer items-center justify-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft underline-offset-4 transition duration-150 ease-in-out hover:text-ink hover:underline'
 
+/**
+ * Mesma regra do backend: serviço sem nenhum profissional vinculado pode ser
+ * feito por qualquer profissional ativo; com vínculo, só pelos vinculados.
+ */
+function aptoPara(profissional: Profissional, servicoIds: string[], todos: Profissional[]): boolean {
+  return servicoIds.every((servicoId) => {
+    const vinculado = todos.some((p) => p.servicoIds.includes(servicoId))
+    return !vinculado || profissional.servicoIds.includes(servicoId)
+  })
+}
+
+function ProfissionalTag({ nome, cor }: { nome: string; cor: string | null }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <span
+        aria-hidden
+        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-hairline"
+        style={{ backgroundColor: cor ?? 'transparent' }}
+      />
+      <span className="truncate">{nome}</span>
+    </span>
+  )
+}
+
 function LembrarLink({ inicio, nome, telefone }: { inicio: string; nome: string; telefone: string }) {
   const { marca } = useMarca()
   const mensagem = `Olá ${nome}! Passando para lembrar do seu atendimento na ${marca.nome} em ${formatDataHora(inicio)}.`
@@ -97,14 +125,27 @@ export function AgendaPage() {
   const { data: servicos, loading: loadingServicos } = useApi<Servico[]>(() => servicosApi.listar())
   const { data: itensDisponiveis } = useApi<Item[]>(() => itensApi.listar())
   const { data: link } = useApi(() => agendaApi.linkPublico())
+  const { data: profissionais } = useApi<Profissional[]>(() => profissionaisApi.listar())
+
+  const { usuario } = useAuth()
+  // O profissional só vê e marca na própria agenda (o backend garante; aqui
+  // só não mostramos o que ele não pode usar).
+  const restrito = ehProfissional(usuario)
+  const administracao = ehAdministracao(usuario)
+  const ativos = (profissionais ?? []).filter((p) => p.ativo)
 
   const [data, setData] = useState(hojeISO())
-  const { data: itens, loading, error, refetch } = useApi(() => agendaApi.listarDia(data), [data])
+  const [filtroProfissional, setFiltroProfissional] = useState('')
+  const { data: itens, loading, error, refetch } = useApi(
+    () => agendaApi.listarDia(data, filtroProfissional || null),
+    [data, filtroProfissional],
+  )
 
   const [copiado, setCopiado] = useState(false)
 
   const [criando, setCriando] = useState(false)
   const [clienteId, setClienteId] = useState('')
+  const [profissionalId, setProfissionalId] = useState('')
   const [dataAtendimento, setDataAtendimento] = useState('')
   const [servicosForm, setServicosForm] = useState<ServicoRow[]>([emptyServicoRow])
   const [criarErro, setCriarErro] = useState('')
@@ -118,12 +159,14 @@ export function AgendaPage() {
   const [buscarErro, setBuscarErro] = useState('')
 
   const [horarios, setHorarios] = useState<HorarioAtendimento[]>([])
+  const [horariosProfissional, setHorariosProfissional] = useState('')
   const [horariosAberto, setHorariosAberto] = useState(false)
   const [horariosErro, setHorariosErro] = useState('')
   const [salvandoHorarios, setSalvandoHorarios] = useState(false)
 
   const [remarcando, setRemarcando] = useState<AgendaItem | null>(null)
   const [novaData, setNovaData] = useState('')
+  const [novoProfissional, setNovoProfissional] = useState('')
   const [remarcarErro, setRemarcarErro] = useState('')
 
   const [acaoStatus, setAcaoStatus] = useState<{ atendimento: AgendaItem; acao: 'concluir' | 'cancelar' } | null>(null)
@@ -131,6 +174,7 @@ export function AgendaPage() {
 
   const abrirCriar = () => {
     setClienteId('')
+    setProfissionalId(restrito ? (usuario?.profissionalId ?? '') : filtroProfissional)
     setDataAtendimento('')
     setServicosForm([emptyServicoRow])
     setCriarErro('')
@@ -204,7 +248,7 @@ export function AgendaPage() {
     setBuscarErro('')
     setDisponibilidade(null)
     try {
-      const resposta = await agendaApi.disponibilidade(buscaData, buscaServico)
+      const resposta = await agendaApi.disponibilidade(buscaData, buscaServico, profissionalId || null)
       setDisponibilidade(resposta)
     } catch (err) {
       setBuscarErro(err instanceof Error ? err.message : 'Falha ao buscar horários livres.')
@@ -216,6 +260,10 @@ export function AgendaPage() {
   const salvarAtendimento = async () => {
     if (!clienteId) {
       setCriarErro('Selecione o cliente.')
+      return
+    }
+    if (!profissionalId) {
+      setCriarErro('Selecione o profissional.')
       return
     }
     if (!dataAtendimento) {
@@ -230,6 +278,7 @@ export function AgendaPage() {
 
     const payload: AtendimentoInput = {
       clienteId,
+      profissionalId,
       dataAtendimento: normalizeDatetimeLocal(dataAtendimento),
       servicos: servicosValidos.map((row) => ({
         servicoId: row.servicoId,
@@ -264,6 +313,7 @@ export function AgendaPage() {
   const abrirRemarcar = (atendimento: AgendaItem) => {
     setRemarcando(atendimento)
     setNovaData(atendimento.inicio.slice(0, 16))
+    setNovoProfissional(atendimento.profissionalId)
     setRemarcarErro('')
   }
 
@@ -278,6 +328,7 @@ export function AgendaPage() {
       await atendimentosApi.atualizar(remarcando.id, {
         clienteId: remarcando.clienteId,
         dataAtendimento: normalizeDatetimeLocal(novaData),
+        ...(novoProfissional ? { profissionalId: novoProfissional } : {}),
       })
       setRemarcando(null)
       refetch()
@@ -304,12 +355,20 @@ export function AgendaPage() {
     }
   }
 
-  const abrirHorarios = async () => {
+  const abrirHorarios = () => {
     setHorariosAberto(true)
+    void carregarHorarios(horariosProfissional)
+  }
+
+  // Sem profissional = expediente padrão da clínica, que é copiado para cada
+  // profissional novo.
+  const carregarHorarios = async (doProfissional: string) => {
+    setHorariosProfissional(doProfissional)
+    setHorarios([])
     setHorariosErro('')
     setSalvandoHorarios(true)
     try {
-      const atuais = await agendaApi.listarHorarios()
+      const atuais = await agendaApi.listarHorarios(doProfissional || null)
       const mapa = new Map(atuais.map((h) => [h.diaSemana, h]))
       setHorarios(
         DIAS.map((_, i) => {
@@ -331,7 +390,7 @@ export function AgendaPage() {
     setSalvandoHorarios(true)
     setHorariosErro('')
     try {
-      await agendaApi.atualizarHorarios(horarios)
+      await agendaApi.atualizarHorarios(horarios, horariosProfissional || null)
       setHorariosAberto(false)
     } catch (err) {
       setHorariosErro(err instanceof Error ? err.message : 'Falha ao salvar horários.')
@@ -351,6 +410,8 @@ export function AgendaPage() {
     }
   }
 
+  const servicosEscolhidos = servicosForm.map((row) => row.servicoId).filter(Boolean)
+
   const acaoConcluindo = acaoStatus?.acao === 'concluir'
   const acaoMensagem = acaoStatus
     ? acaoConcluindo
@@ -366,9 +427,11 @@ export function AgendaPage() {
         subtitle={`Expediente de ${formatDataLongaISO(data)}`}
         action={
           <div className="flex w-full flex-col gap-3 sm:flex-row lg:justify-end">
-            <Button variant="secondary" onClick={abrirHorarios}>
-              Horários
-            </Button>
+            {administracao && (
+              <Button variant="secondary" onClick={abrirHorarios}>
+                Horários
+              </Button>
+            )}
             <Button variant="ghost" onClick={copiarLink} disabled={!link}>
               {copiado ? 'Link copiado!' : 'Link para clientes'}
             </Button>
@@ -389,9 +452,27 @@ export function AgendaPage() {
             próximo →
           </Button>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => setData(hojeISO())}>
-          Hoje
-        </Button>
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-end">
+          {!restrito && (
+            <Select
+              label="Profissional"
+              value={filtroProfissional}
+              onChange={(e) => setFiltroProfissional(e.target.value)}
+              className="w-full sm:w-56"
+            >
+              <option value="">Todos</option>
+              {(profissionais ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                  {p.ativo ? '' : ' (inativo)'}
+                </option>
+              ))}
+            </Select>
+          )}
+          <Button variant="secondary" size="sm" className="self-start sm:mb-1" onClick={() => setData(hojeISO())}>
+            Hoje
+          </Button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}
@@ -424,6 +505,11 @@ export function AgendaPage() {
                 <CardDetail className="truncate">
                   {atendimento.servicos.join(', ') || '—'}
                 </CardDetail>
+                {!restrito && (
+                  <CardDetail>
+                    <ProfissionalTag nome={atendimento.profissionalNome} cor={atendimento.profissionalCor} />
+                  </CardDetail>
+                )}
                 <CardDetail>
                   {atendimento.status === 'AGENDADO' && (
                     <LembrarLink
@@ -467,6 +553,7 @@ export function AgendaPage() {
                 <tr className="text-left text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft">
                   <th className="py-3 pr-8 font-medium">Horário</th>
                   <th className="py-3 pr-8 font-medium">Cliente</th>
+                  {!restrito && <th className="py-3 pr-8 font-medium">Profissional</th>}
                   <th className="py-3 pr-8 font-medium">Serviços</th>
                   <th className="py-3 pr-8 font-medium">Status</th>
                   <th className="py-3 pr-8 font-medium">Total</th>
@@ -483,6 +570,11 @@ export function AgendaPage() {
                       {atendimento.inicio.slice(11, 16)}–{atendimento.fim.slice(11, 16)}
                     </td>
                     <td className="py-4 pr-8 font-medium text-ink">{atendimento.clienteNome}</td>
+                    {!restrito && (
+                      <td className="max-w-[12rem] py-4 pr-8 text-ink-soft">
+                        <ProfissionalTag nome={atendimento.profissionalNome} cor={atendimento.profissionalCor} />
+                      </td>
+                    )}
                     <td className="max-w-xs truncate py-4 pr-8 text-ink-soft">
                       {atendimento.servicos.join(', ') || '—'}
                     </td>
@@ -554,6 +646,26 @@ export function AgendaPage() {
             )}
           </Select>
 
+          <Select
+            label="Profissional *"
+            value={profissionalId}
+            disabled={restrito}
+            onChange={(e) => {
+              setProfissionalId(e.target.value)
+              invalidarDisponibilidade()
+            }}
+          >
+            <option value="">Selecione o profissional...</option>
+            {(restrito ? (profissionais ?? []) : ativos)
+              .filter((p) => restrito || aptoPara(p, servicosEscolhidos, ativos) || p.id === profissionalId)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                  {p.especialidades.length > 0 ? ` · ${p.especialidades.map((e) => e.nome).join(', ')}` : ''}
+                </option>
+              ))}
+          </Select>
+
           <TextField
             label="Data e horário *"
             type="datetime-local"
@@ -567,7 +679,9 @@ export function AgendaPage() {
           />
 
           <div className="border border-hairline bg-ivory p-4">
-            <span className={`mb-3 block ${microLabel}`}>Buscar horários livres</span>
+            <span className={`mb-3 block ${microLabel}`}>
+              {profissionalId ? 'Buscar horários livres do profissional' : 'Buscar horários livres (qualquer profissional apto)'}
+            </span>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <Select
                 label="Serviço"
@@ -741,6 +855,21 @@ export function AgendaPage() {
             value={novaData}
             onChange={(e) => setNovaData(e.target.value)}
           />
+          {!restrito && (
+            <Select
+              label="Profissional"
+              value={novoProfissional}
+              onChange={(e) => setNovoProfissional(e.target.value)}
+            >
+              {(profissionais ?? [])
+                .filter((p) => p.ativo || p.id === remarcando?.profissionalId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+            </Select>
+          )}
           {remarcarErro && <p className="text-sm text-red-600">{remarcarErro}</p>}
           <div className="mt-2 flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setRemarcando(null)}>
@@ -755,9 +884,26 @@ export function AgendaPage() {
 
       <Modal open={horariosAberto} title="Horário de atendimento" onClose={() => setHorariosAberto(false)}>
         <div className="flex flex-col gap-4">
+          <Select
+            label="Expediente de"
+            value={horariosProfissional}
+            onChange={(e) => void carregarHorarios(e.target.value)}
+            disabled={salvandoHorarios}
+          >
+            <option value="">Padrão da clínica</option>
+            {(profissionais ?? [])
+              .filter((p) => !p.geral)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                  {p.ativo ? '' : ' (inativo)'}
+                </option>
+              ))}
+          </Select>
           <p className="text-sm text-ink-soft">
-            Defina o expediente usado para sugerir horários livres. Agendamentos fora do expediente serão
-            recusados.
+            {horariosProfissional
+              ? 'Dias e horários em que este profissional atende. Agendamentos fora deles serão recusados.'
+              : 'Expediente padrão da clínica. Cada profissional novo começa com ele e depois pode ter o seu.'}
           </p>
           {salvandoHorarios ? (
             <Spinner />

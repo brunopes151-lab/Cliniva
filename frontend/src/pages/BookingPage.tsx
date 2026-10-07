@@ -11,7 +11,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
 import { MARCA_PADRAO } from '@/lib/marca'
-import type { BookingResult, DisponibilidadeDia, ServicoPublico } from '@/types'
+import type { BookingResult, DisponibilidadeDia, ProfissionalPublico, ServicoPublico } from '@/types'
 import { formatDataHora, formatDataLonga, formatMoeda } from '@/utils/format'
 
 const diasDisponiveis = 30
@@ -51,6 +51,8 @@ export function BookingPage() {
   const marca = marcaClinica ?? MARCA_PADRAO
 
   const [servicoId, setServicoId] = useState('')
+  // Vazio = sem preferência: a clínica escolhe quem estiver livre no horário.
+  const [profissionalId, setProfissionalId] = useState('')
   const [data, setData] = useState(hojeISO())
   const [horarioSelecionado, setHorarioSelecionado] = useState('')
 
@@ -61,13 +63,18 @@ export function BookingPage() {
   const [salvando, setSalvando] = useState(false)
   const [sucesso, setSucesso] = useState<BookingResult | null>(null)
 
+  const { data: profissionais } = useApi<ProfissionalPublico[]>(
+    () => (servicoId ? bookingApi.listarProfissionais(slug, servicoId) : Promise.resolve([])),
+    [slug, servicoId],
+  )
+
   const dispPronto = Boolean(servicoId)
   const { data: disponibilidade, loading: loadingDisp, error: dispErro } = useApi<DisponibilidadeDia | null>(
     () =>
       dispPronto
-        ? bookingApi.disponibilidade(slug, data, servicoId)
+        ? bookingApi.disponibilidade(slug, data, servicoId, profissionalId || null)
         : Promise.resolve(null),
-    [slug, data, servicoId],
+    [slug, data, servicoId, profissionalId],
   )
 
   const servicoEscolhido = servicos?.find((s) => s.id === servicoId)
@@ -78,6 +85,7 @@ export function BookingPage() {
   const reiniciar = () => {
     setSucesso(null)
     setServicoId('')
+    setProfissionalId('')
     setData(hojeISO())
     setHorarioSelecionado('')
     setNome('')
@@ -108,6 +116,7 @@ export function BookingPage() {
         nome: nome.trim(),
         telefone: telefone.trim(),
         email: email.trim() || undefined,
+        profissionalId: profissionalId || undefined,
       })
       setSucesso(resultado)
     } catch (err) {
@@ -146,6 +155,10 @@ export function BookingPage() {
                 <p className="mt-1 font-medium text-ink">{sucesso.duracaoMinutos} minutos</p>
               </div>
               <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft">Profissional</p>
+                <p className="mt-1 font-medium text-ink">{sucesso.profissional}</p>
+              </div>
+              <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft">Quem</p>
                 <p className="mt-1 font-medium text-ink">{sucesso.cliente}</p>
               </div>
@@ -182,7 +195,7 @@ export function BookingPage() {
             Escolha seu horário
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-soft">
-            Selecione o serviço, o dia e o horário. O atendimento é agendado na hora — é só chegar.
+            Selecione o serviço, o profissional, o dia e o horário. O atendimento é agendado na hora — é só chegar.
           </p>
         </div>
 
@@ -206,6 +219,7 @@ export function BookingPage() {
                       type="button"
                       onClick={() => {
                         setServicoId(servico.id)
+                        setProfissionalId('')
                         setHorarioSelecionado('')
                       }}
                       className={`cursor-pointer border p-4 text-left transition-colors duration-150 ease-in-out ${
@@ -235,6 +249,37 @@ export function BookingPage() {
                 </div>
               </label>
             </div>
+
+            {servicoId && profissionais && profissionais.length > 0 && (
+              <div className="border border-hairline bg-paper p-6 md:p-8">
+                <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft">
+                  Profissional
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[{ id: '', nome: 'Sem preferência', especialidades: [] as string[] }, ...profissionais].map((p) => {
+                    const ativo = p.id === profissionalId
+                    return (
+                      <button
+                        key={p.id || 'sem-preferencia'}
+                        type="button"
+                        onClick={() => {
+                          setProfissionalId(p.id)
+                          setHorarioSelecionado('')
+                        }}
+                        className={`cursor-pointer border px-4 py-3 text-left transition-colors duration-150 ease-in-out ${
+                        ativo ? 'border-accent bg-ivory' : 'border-hairline bg-transparent hover:border-ink/40'
+                      }`}
+                      >
+                        <p className="font-medium text-ink">{p.nome}</p>
+                        <p className="mt-0.5 text-sm text-ink-soft">
+                          {p.id ? p.especialidades.join(', ') || '\u00a0' : 'Quem estiver livre no horário'}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="border border-hairline bg-paper p-6 md:p-8">
               <label className="flex flex-col">

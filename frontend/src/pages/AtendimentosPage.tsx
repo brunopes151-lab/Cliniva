@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { atendimentosApi } from '@/api/atendimentosApi'
 import { clientesApi } from '@/api/clientesApi'
+import { profissionaisApi } from '@/api/equipeApi'
 import { itensApi } from '@/api/itensApi'
 import { servicosApi } from '@/api/servicosApi'
 import { Button } from '@/components/ui/Button'
@@ -15,11 +16,14 @@ import { Spinner } from '@/components/ui/Spinner'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
+import { useAuth } from '@/hooks/useAuth'
+import { ehProfissional } from '@/lib/perfis'
 import type {
   AtendimentoInput,
   AtendimentoResumo,
   Cliente,
   Item,
+  Profissional,
   Servico,
   StatusAtendimento,
 } from '@/types'
@@ -67,26 +71,32 @@ export function AtendimentosPage() {
   const { data: clientes, loading: loadingClientes } = useApi<Cliente[]>(() => clientesApi.listar())
   const { data: servicos, loading: loadingServicos } = useApi<Servico[]>(() => servicosApi.listar())
   const { data: itensDisponiveis } = useApi<Item[]>(() => itensApi.listar())
+  const { data: profissionais } = useApi<Profissional[]>(() => profissionaisApi.listar())
+  const { usuario } = useAuth()
+  const restrito = ehProfissional(usuario)
 
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroCliente, setFiltroCliente] = useState('')
+  const [filtroProfissional, setFiltroProfissional] = useState('')
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
 
   const filtros = {
     status: (filtroStatus || undefined) as StatusAtendimento | undefined,
     clienteId: filtroCliente || undefined,
+    profissionalId: filtroProfissional || undefined,
     dataInicio: filtroDataInicio ? normalizeDatetimeLocal(filtroDataInicio) : undefined,
     dataFim: filtroDataFim ? normalizeDatetimeLocal(filtroDataFim) : undefined,
   }
 
   const { data: atendimentos, loading, error, refetch } = useApi(
     () => atendimentosApi.listar(filtros),
-    [filtroStatus, filtroCliente, filtroDataInicio, filtroDataFim],
+    [filtroStatus, filtroCliente, filtroProfissional, filtroDataInicio, filtroDataFim],
   )
 
   const [criando, setCriando] = useState(false)
   const [clienteId, setClienteId] = useState('')
+  const [profissionalId, setProfissionalId] = useState('')
   const [dataAtendimento, setDataAtendimento] = useState('')
   const [servicosForm, setServicosForm] = useState<ServicoRow[]>([emptyServicoRow])
   const [criarErro, setCriarErro] = useState('')
@@ -100,6 +110,7 @@ export function AtendimentosPage() {
 
   const abrirCriar = () => {
     setClienteId('')
+    setProfissionalId(restrito ? (usuario?.profissionalId ?? '') : filtroProfissional)
     setDataAtendimento('')
     setServicosForm([emptyServicoRow])
     setCriarErro('')
@@ -152,6 +163,10 @@ export function AtendimentosPage() {
       setCriarErro('Selecione o cliente.')
       return
     }
+    if (!profissionalId) {
+      setCriarErro('Selecione o profissional.')
+      return
+    }
     if (!dataAtendimento) {
       setCriarErro('Informe a data e horário do atendimento.')
       return
@@ -164,6 +179,7 @@ export function AtendimentosPage() {
 
     const payload: AtendimentoInput = {
       clienteId,
+      profissionalId,
       dataAtendimento: normalizeDatetimeLocal(dataAtendimento),
       servicos: servicosValidos.map((row) => ({
         servicoId: row.servicoId,
@@ -218,7 +234,7 @@ export function AtendimentosPage() {
         action={<Button onClick={abrirCriar} className="w-full lg:w-auto">Novo atendimento</Button>}
       />
 
-      <div className="mb-10 grid grid-cols-1 gap-x-12 gap-y-6 border-b border-hairline pb-8 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-10 grid grid-cols-1 gap-x-12 gap-y-6 border-b border-hairline pb-8 md:grid-cols-2 xl:grid-cols-5">
         <Select label="Status" value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
           <option value="">Todos</option>
           <option value="AGENDADO">Agendado</option>
@@ -233,6 +249,20 @@ export function AtendimentosPage() {
             </option>
           ))}
         </Select>
+        {!restrito && (
+          <Select
+            label="Profissional"
+            value={filtroProfissional}
+            onChange={(e) => setFiltroProfissional(e.target.value)}
+          >
+            <option value="">Todos</option>
+            {profissionais?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </Select>
+        )}
         <TextField
           label="De"
           type="datetime-local"
@@ -265,6 +295,7 @@ export function AtendimentosPage() {
                   </div>
                 </div>
                 <CardDetail>{formatDataHora(atendimento.dataAtendimento)}</CardDetail>
+                {!restrito && <CardDetail>{atendimento.profissionalNome}</CardDetail>}
                 <p className="mt-0.5 font-mono text-[13px] text-accent-strong">
                   {formatMoeda(atendimento.valorTotal)}
                 </p>
@@ -298,6 +329,7 @@ export function AtendimentosPage() {
                 <tr className="text-left text-[11px] font-medium uppercase tracking-[0.18em] text-ink-soft">
                   <th className="py-3 pr-8 font-medium">Cliente</th>
                   <th className="py-3 pr-8 font-medium">Data</th>
+                  {!restrito && <th className="py-3 pr-8 font-medium">Profissional</th>}
                   <th className="py-3 pr-8 font-medium">Status</th>
                   <th className="py-3 pr-8 font-medium">Total</th>
                   <th className="py-3 text-right font-medium">Ações</th>
@@ -313,6 +345,7 @@ export function AtendimentosPage() {
                   <td className="py-4 pr-8 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft">
                     {formatDataHora(atendimento.dataAtendimento)}
                   </td>
+                  {!restrito && <td className="py-4 pr-8 text-ink-soft">{atendimento.profissionalNome}</td>}
                   <td className="py-4 pr-8">
                     <StatusBadge status={atendimento.status} />
                   </td>
@@ -362,6 +395,22 @@ export function AtendimentosPage() {
                 </option>
               ))
             )}
+          </Select>
+
+          <Select
+            label="Profissional *"
+            value={profissionalId}
+            disabled={restrito}
+            onChange={(e) => setProfissionalId(e.target.value)}
+          >
+            <option value="">Selecione o profissional...</option>
+            {profissionais
+              ?.filter((p) => restrito || p.ativo)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
           </Select>
 
           <TextField

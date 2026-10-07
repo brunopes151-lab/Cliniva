@@ -69,6 +69,8 @@ export interface AtendimentoResumo {
   dataAtendimento: string
   status: StatusAtendimento
   valorTotal: number
+  profissionalId: string
+  profissionalNome: string
 }
 
 export interface AtendimentoItem {
@@ -93,6 +95,8 @@ export interface Atendimento {
   status: StatusAtendimento
   valorTotal: number
   servicos: AtendimentoServico[]
+  profissionalId: string
+  profissionalNome: string
 }
 
 export interface ServicoInput {
@@ -117,6 +121,7 @@ export interface MovimentacaoEstoqueInput {
 export interface AtendimentoFiltros {
   status?: StatusAtendimento
   clienteId?: string
+  profissionalId?: string
   dataInicio?: string
   dataFim?: string
 }
@@ -133,6 +138,7 @@ export interface AtendimentoServicoInput {
 
 export interface AtendimentoInput {
   clienteId: string
+  profissionalId: string
   dataAtendimento: string
   servicos: AtendimentoServicoInput[]
 }
@@ -140,6 +146,7 @@ export interface AtendimentoInput {
 export interface AtendimentoUpdate {
   clienteId: string
   dataAtendimento: string
+  profissionalId?: string
 }
 
 export interface AgendaItem {
@@ -153,6 +160,9 @@ export interface AgendaItem {
   status: StatusAtendimento
   valorTotal: number
   servicos: string[]
+  profissionalId: string
+  profissionalNome: string
+  profissionalCor: string | null
 }
 
 export interface HorarioAtendimento {
@@ -188,6 +198,7 @@ export interface BookingInput {
   nome: string
   telefone: string
   email?: string
+  profissionalId?: string
 }
 
 export interface BookingResult {
@@ -197,4 +208,77 @@ export interface BookingResult {
   servico: string
   clinica: string
   cliente: string
+  profissional: string
+}
+export type Papel = 'ADMIN' | 'OWNER' | 'RECEPCAO' | 'PROFISSIONAL'
+
+export const PAPEL_LABEL: Record<Papel, string> = {
+  ADMIN: 'Suporte da plataforma',
+  OWNER: 'Administrador',
+  RECEPCAO: 'Recepção',
+  PROFISSIONAL: 'Profissional',
+}
+
+export interface Especialidade {
+  id: string
+  nome: string
+}
+
+export interface Profissional {
+  id: string
+  nome: string
+  cor: string | null
+  ativo: boolean
+  geral: boolean
+  especialidades: Especialidade[]
+  /** Vazio = atende qualquer serviço sem vínculo. */
+  servicoIds: string[]
+}
+
+export interface ProfissionalInput {
+  nome: string
+  cor: string | null
+  ativo: boolean
+  especialidadeIds: string[]
+  servicoIds: string[]
+}
+
+export interface ProfissionalPublico {
+  id: string
+  nome: string
+  especialidades: string[]
+}
+
+export interface UsuarioClinica {
+  id: string
+  nome: string | null
+  email: string
+  papel: Papel
+  ativo: boolean
+  profissionalId: string | null
+  profissionalNome: string | null
+}
+
+export interface CriarUsuarioInput {
+  nome: string
+  email: string
+  papel: Papel
+  profissionalId: string | null
+}
+
+export interface AtualizarUsuarioInput {
+  nome: string
+  papel: Papel
+  profissionalId: string | null
+  ativo: boolean
+}
+
+export interface UsuarioCriado {
+  usuario: UsuarioClinica
+  senhaTemporaria: string | null
+}
+
+export interface SenhaTemporaria {
+  email: string
+  senhaTemporaria: string
 }

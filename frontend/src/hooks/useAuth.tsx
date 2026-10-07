@@ -3,14 +3,17 @@ import type { ReactNode } from 'react'
 import { ApiError, http } from '@/api/http'
 import { supabase } from '@/lib/supabase'
 import { sessionStore } from '@/lib/session'
+import type { Papel } from '@/types'
 
 export interface UsuarioLogado {
   id: string
   nome: string | null
   email: string
-  papel: 'ADMIN' | 'OWNER'
+  papel: Papel
   clinicaId: string | null
   clinicaNome: string | null
+  /** Preenchido quando o login é de quem atende (perfil PROFISSIONAL ou dono que atende). */
+  profissionalId: string | null
 }
 
 interface ErroCarregamento {
@@ -32,9 +35,11 @@ interface MeResponseDTO {
   id: string
   nome: string | null
   email: string
-  papel: 'ADMIN' | 'OWNER'
+  papel: Papel
   clinicaId: string | null
   clinicaNome: string | null
+  /** Preenchido quando o login é de quem atende (perfil PROFISSIONAL ou dono que atende). */
+  profissionalId: string | null
 }
 
 function aplicarNoLocalStorage(token: string | null, clinicaId: string | null) {

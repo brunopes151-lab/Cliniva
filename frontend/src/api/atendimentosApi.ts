@@ -12,6 +12,7 @@ function buildQuery(filtros: AtendimentoFiltros): string {
   const params = new URLSearchParams()
   if (filtros.status) params.set('status', filtros.status)
   if (filtros.clienteId) params.set('clienteId', filtros.clienteId)
+  if (filtros.profissionalId) params.set('profissionalId', filtros.profissionalId)
   if (filtros.dataInicio) params.set('dataInicio', filtros.dataInicio)
   if (filtros.dataFim) params.set('dataFim', filtros.dataFim)
   const query = params.toString()
