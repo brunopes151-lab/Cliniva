@@ -26,6 +26,10 @@ import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.tenancy.Clinica;
 import com.cliniva.tenancy.ClinicaRepository;
+import com.cliniva.tenancy.Especialidade;
+import com.cliniva.tenancy.Profissional;
+import com.cliniva.tenancy.ProfissionalService;
+import com.cliniva.tenancy.dtos.EquipeDtos.ProfissionalPublicoDTO;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,6 +42,7 @@ public class BookingService {
     private final ServicoRepository servicoRepository;
     private final AgendaService agendaService;
     private final AtendimentoService atendimentoService;
+    private final ProfissionalService profissionalService;
 
     @Transactional(readOnly = true)
     public List<ServicoPublicoDTO> listarServicos(String slug) {
@@ -49,11 +54,23 @@ public class BookingService {
                 .toList();
     }
 
+    /** Quem pode fazer o serviço, para o paciente escolher. Só nome e especialidades. */
     @Transactional(readOnly = true)
-    public DisponibilidadeDiaDTO disponibilidade(String slug, LocalDate data, UUID servicoId) {
+    public List<ProfissionalPublicoDTO> listarProfissionais(String slug, UUID servicoId) {
+        Clinica clinica = buscarClinicaAtiva(slug);
+        Servico servico = servicoRepository.findByIdAndClinica(servicoId, clinica)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Serviço não encontrado"));
+        return profissionalService.aptos(clinica, List.of(servico)).stream()
+                .map(profissional -> new ProfissionalPublicoDTO(profissional.getId(), profissional.getNome(),
+                        profissional.getEspecialidades().stream().map(Especialidade::getNome).sorted().toList()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public DisponibilidadeDiaDTO disponibilidade(String slug, LocalDate data, UUID servicoId, UUID profissionalId) {
         Clinica clinica = buscarClinicaAtiva(slug);
         // Janela/passado são validados dentro de AgendaService (regra única).
-        return agendaService.disponibilidadeDia(clinica, data, servicoId);
+        return agendaService.disponibilidadeDia(clinica, data, servicoId, profissionalId);
     }
 
     @Transactional
@@ -64,12 +81,21 @@ public class BookingService {
 
         // Validação real (janela, expediente, passado e conflito) acontece em
         // createAtendimento, já sob lock pessimista da clínica.
+        UUID profissionalId = request.profissionalId();
+        if (profissionalId == null) {
+            // Sem preferência: o primeiro profissional livre, já sob o lock.
+            Profissional livre = agendaService.escolherLivre(clinica, List.of(servico), request.dataHora(),
+                    servico.getDuracaoMinutos());
+            profissionalId = livre.getId();
+        }
+
         Cliente cliente = localizarOuCriarCliente(clinica, request);
 
         CreateAtendimentoRequestDTO atendimentoRequest = new CreateAtendimentoRequestDTO(
                 cliente.getId(),
                 request.dataHora(),
-                List.of(new ServicoSelecionadoDTO(request.servicoId(), List.of())));
+                List.of(new ServicoSelecionadoDTO(request.servicoId(), List.of())),
+                profissionalId);
         CreateAtendimentoResponseDTO criado = atendimentoService.createAtendimento(clinica, atendimentoRequest);
 
         return new BookingResponseDTO(
@@ -78,7 +104,8 @@ public class BookingService {
                 criado.duracaoMinutos(),
                 servico.getNome(),
                 clinica.getNome(),
-                cliente.getNome());
+                cliente.getNome(),
+                criado.profissionalNome());
     }
 
     private Cliente localizarOuCriarCliente(Clinica clinica, BookingRequestDTO request) {

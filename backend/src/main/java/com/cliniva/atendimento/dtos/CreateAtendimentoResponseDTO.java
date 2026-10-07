@@ -15,7 +15,9 @@ public record CreateAtendimentoResponseDTO(
         LocalDate dataCriacao,
         Integer duracaoMinutos,
         StatusAtendimento status,
-        List<ServicoRealizadoDTO> servicos) {
+        List<ServicoRealizadoDTO> servicos,
+        UUID profissionalId,
+        String profissionalNome) {
 
     public record ServicoRealizadoDTO(
             UUID servicoId,

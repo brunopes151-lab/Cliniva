@@ -13,6 +13,8 @@ public record AtendimentoResumoResponseDTO(
         String telefoneCliente,
         LocalDateTime dataAtendimento,
         StatusAtendimento status,
-        BigDecimal valorTotal) {
+        BigDecimal valorTotal,
+        UUID profissionalId,
+        String profissionalNome) {
 
 }

@@ -47,9 +47,10 @@ public class AtendimentoController {
             @RequestParam(required = false) StatusAtendimento status,
             @RequestParam(required = false) UUID clienteId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
+            @RequestParam(required = false) UUID profissionalId) {
         return atendimentoService.listarAtendimentos(clinicaContext.obterClinicaAtual(), status, clienteId, dataInicio,
-                dataFim);
+                dataFim, profissionalId);
     }
 
     @GetMapping("/{id}")

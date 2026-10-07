@@ -19,7 +19,10 @@ public record CreateAtendimentoRequestDTO(
 
                 @Size(min = 1, message = "Atendimento deve ter pelo menos um serviço")
                 @Valid
-                List<ServicoSelecionadoDTO> servicos) {
+                List<ServicoSelecionadoDTO> servicos,
+
+                @NotNull(message = "Profissional é obrigatório")
+                UUID profissionalId) {
         public record ServicoSelecionadoDTO(
                         @NotNull(message = "Serviço é obrigatório")
                         UUID servicoId,

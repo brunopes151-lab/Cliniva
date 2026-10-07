@@ -14,7 +14,7 @@ import com.cliniva.tenancy.Clinica;
 public class AtendimentoSpecifications {
 
     public static Specification<Atendimento> comFiltros(Clinica clinica, StatusAtendimento status, UUID clienteId,
-            LocalDateTime dataInicio, LocalDateTime dataFim) {
+            LocalDateTime dataInicio, LocalDateTime dataFim, UUID profissionalId) {
         List<Specification<Atendimento>> especificacoes = new ArrayList<>();
         especificacoes.add(comClinica(clinica));
 
@@ -23,6 +23,9 @@ public class AtendimentoSpecifications {
         }
         if (clienteId != null) {
             especificacoes.add(comCliente(clienteId));
+        }
+        if (profissionalId != null) {
+            especificacoes.add(comProfissional(profissionalId));
         }
         if (dataInicio != null && dataFim != null) {
             especificacoes.add(comPeriodo(dataInicio, dataFim));
@@ -41,6 +44,10 @@ public class AtendimentoSpecifications {
 
     private static Specification<Atendimento> comCliente(UUID clienteId) {
         return (root, query, builder) -> builder.equal(root.get("cliente").get("id"), clienteId);
+    }
+
+    private static Specification<Atendimento> comProfissional(UUID profissionalId) {
+        return (root, query, builder) -> builder.equal(root.get("profissional").get("id"), profissionalId);
     }
 
     private static Specification<Atendimento> comPeriodo(LocalDateTime inicio, LocalDateTime fim) {

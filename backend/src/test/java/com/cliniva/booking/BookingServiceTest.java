@@ -3,6 +3,7 @@ package com.cliniva.booking;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +37,8 @@ import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.tenancy.Clinica;
 import com.cliniva.tenancy.ClinicaRepository;
+import com.cliniva.tenancy.Profissional;
+import com.cliniva.tenancy.ProfissionalService;
 
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
@@ -54,6 +57,10 @@ class BookingServiceTest {
     private AgendaService agendaService;
     @Mock
     private AtendimentoService atendimentoService;
+    @Mock
+    private ProfissionalService profissionalService;
+
+    private static final UUID PROFISSIONAL_ID = UUID.randomUUID();
 
     @InjectMocks
     private BookingService bookingService;
@@ -78,12 +85,13 @@ class BookingServiceTest {
 
     private BookingRequestDTO requisicao(LocalDate data) {
         return new BookingRequestDTO(UUID.randomUUID(),
-                data.atTime(10, 0), "Maria Silva", "(11) 99999-9999", "maria@email.com");
+                data.atTime(10, 0), "Maria Silva", "(11) 99999-9999", "maria@email.com", PROFISSIONAL_ID);
     }
 
     private CreateAtendimentoResponseDTO respostaCriada(UUID id, LocalDate data) {
         return new CreateAtendimentoResponseDTO(id, UUID.randomUUID(), data.atTime(10, 0),
-                LocalDate.now(), 45, StatusAtendimento.AGENDADO, List.<ServicoRealizadoDTO>of());
+                LocalDate.now(), 45, StatusAtendimento.AGENDADO, List.<ServicoRealizadoDTO>of(), PROFISSIONAL_ID,
+                "Ana");
     }
 
     @Test
@@ -145,7 +153,7 @@ class BookingServiceTest {
                 .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
 
         bookingService.agendar(SLUG, new BookingRequestDTO(servico.getId(), data.atTime(10, 0),
-                "Maria Silva", "11999999999", "   "));
+                "Maria Silva", "11999999999", "   ", PROFISSIONAL_ID));
 
         ArgumentCaptor<Cliente> captor = ArgumentCaptor.forClass(Cliente.class);
         verify(clienteRepository).save(captor.capture());
@@ -190,7 +198,7 @@ class BookingServiceTest {
 
         // A validação (janela, expediente, lock e conflito) acontece dentro de
         // createAtendimento — não pode haver check fora do lock.
-        verify(agendaService, never()).validarDisponibilidade(any(), any(), any(Integer.class), any());
+        verify(agendaService, never()).validarDisponibilidade(any(), any(), any(), any(Integer.class), any());
         verify(atendimentoService).createAtendimento(any(), any(CreateAtendimentoRequestDTO.class));
     }
 
@@ -210,5 +218,69 @@ class BookingServiceTest {
     void telefoneNormalizadoDeveAdicionarDdi() {
         assertThat(BookingService.telefoneNormalizado("(11) 99999-9999")).isEqualTo("5511999999999");
         assertThat(BookingService.telefoneNormalizado("5511999999999")).isEqualTo("5511999999999");
+    }
+
+    @Test
+    void agendamentoComProfissionalEscolhidoUsaEle() {
+        Servico servico = servico();
+        LocalDate data = LocalDate.now().plusDays(1);
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(clienteRepository.findByTelefoneAndClinica(any(), any())).thenReturn(Optional.empty());
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(i -> i.getArgument(0));
+        when(atendimentoService.createAtendimento(any(), any(CreateAtendimentoRequestDTO.class)))
+                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
+
+        var resposta = bookingService.agendar(SLUG, requisicao(data));
+
+        ArgumentCaptor<CreateAtendimentoRequestDTO> captor = ArgumentCaptor.forClass(CreateAtendimentoRequestDTO.class);
+        verify(atendimentoService).createAtendimento(any(), captor.capture());
+        assertThat(captor.getValue().profissionalId()).isEqualTo(PROFISSIONAL_ID);
+        assertThat(resposta.profissional()).isEqualTo("Ana");
+        verify(agendaService, never()).escolherLivre(any(), any(), any(), any(Integer.class));
+    }
+
+    @Test
+    void semPreferenciaOSistemaEscolheQuemEstaLivre() {
+        Servico servico = servico();
+        LocalDate data = LocalDate.now().plusDays(1);
+        Profissional bia = new Profissional();
+        UUID biaId = UUID.randomUUID();
+        ReflectionTestUtils.setField(bia, "id", biaId);
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(agendaService.escolherLivre(eq(CLINICA), eq(List.of(servico)), any(), eq(45))).thenReturn(bia);
+        when(clienteRepository.findByTelefoneAndClinica(any(), any())).thenReturn(Optional.empty());
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(i -> i.getArgument(0));
+        when(atendimentoService.createAtendimento(any(), any(CreateAtendimentoRequestDTO.class)))
+                .thenAnswer(i -> respostaCriada(UUID.randomUUID(), data));
+
+        bookingService.agendar(SLUG, new BookingRequestDTO(servico.getId(), data.atTime(10, 0),
+                "Maria Silva", "11999999999", null, null));
+
+        ArgumentCaptor<CreateAtendimentoRequestDTO> captor = ArgumentCaptor.forClass(CreateAtendimentoRequestDTO.class);
+        verify(atendimentoService).createAtendimento(any(), captor.capture());
+        assertThat(captor.getValue().profissionalId()).isEqualTo(biaId);
+    }
+
+    @Test
+    void listaPublicaDeProfissionaisMostraSoNomeEEspecialidade() {
+        Servico servico = servico();
+        Profissional ana = new Profissional();
+        ReflectionTestUtils.setField(ana, "id", PROFISSIONAL_ID);
+        ana.setNome("Ana");
+        com.cliniva.tenancy.Especialidade fisio = new com.cliniva.tenancy.Especialidade();
+        fisio.setNome("Fisioterapia");
+        ana.getEspecialidades().add(fisio);
+        when(clinicaRepository.findBySlugAndAtivaTrue(SLUG)).thenReturn(Optional.of(CLINICA));
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(profissionalService.aptos(CLINICA, List.of(servico))).thenReturn(List.of(ana));
+
+        var profissionais = bookingService.listarProfissionais(SLUG, servico.getId());
+
+        assertThat(profissionais).singleElement().satisfies(p -> {
+            assertThat(p.nome()).isEqualTo("Ana");
+            assertThat(p.especialidades()).containsExactly("Fisioterapia");
+        });
     }
 }

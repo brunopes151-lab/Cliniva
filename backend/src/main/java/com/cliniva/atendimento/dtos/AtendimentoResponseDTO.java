@@ -16,7 +16,9 @@ public record AtendimentoResponseDTO(
         LocalDate dataCriacao,
         StatusAtendimento status,
         BigDecimal valorTotal,
-        List<ServicoRealizadoDTO> servicos) {
+        List<ServicoRealizadoDTO> servicos,
+        UUID profissionalId,
+        String profissionalNome) {
 
     public record ServicoRealizadoDTO(
             UUID servicoId,

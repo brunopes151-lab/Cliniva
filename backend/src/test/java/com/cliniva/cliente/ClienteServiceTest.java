@@ -41,6 +41,7 @@ import com.cliniva.exception.RecursoDuplicadoException;
 import com.cliniva.exception.RecursoEmUsoException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.ClinicaContext;
 
 @ExtendWith(MockitoExtension.class)
 class ClienteServiceTest {
@@ -59,6 +60,9 @@ class ClienteServiceTest {
 
     @Mock
     private AtendimentoService atendimentoService;
+
+    @Mock
+    private ClinicaContext clinicaContext;
 
     @InjectMocks
     private ClienteService clienteService;
@@ -132,7 +136,8 @@ class ClienteServiceTest {
     private AtendimentoResponseDTO atendimentoDTO(UUID id, String nomeCliente, LocalDateTime data,
             StatusAtendimento status, BigDecimal valor) {
         return new AtendimentoResponseDTO(
-                id, UUID.randomUUID(), nomeCliente, data, LocalDate.now(), status, valor, List.of());
+                id, UUID.randomUUID(), nomeCliente, data, LocalDate.now(), status, valor, List.of(), UUID.randomUUID(),
+                "Ana");
     }
 
     @Test
@@ -569,5 +574,67 @@ class ClienteServiceTest {
     void naoDeveAceitarMesInvalido() {
         assertThatThrownBy(() -> clienteService.aniversariantes(CLINICA, 13))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ---------- profissional logado (Fase 2) ----------
+
+    @Test
+    void profissionalSoListaPacientesQueAtende() {
+        UUID profissionalId = UUID.randomUUID();
+        Cliente meu = cliente(UUID.randomUUID(), "Maria", null, "111");
+        Cliente deOutro = cliente(UUID.randomUUID(), "Joana", null, "222");
+        when(clinicaContext.profissionalRestrito()).thenReturn(Optional.of(profissionalId));
+        when(clienteRepository.findByClinica(CLINICA)).thenReturn(List.of(meu, deOutro));
+        when(atendimentoRepository.clienteIdsDoProfissional(CLINICA, profissionalId)).thenReturn(List.of(meu.getId()));
+
+        var lista = clienteService.listarClientes(CLINICA, null, null);
+
+        assertThat(lista).extracting(c -> c.nome()).containsExactly("Maria");
+    }
+
+    @Test
+    void profissionalNaoAbrePacienteQueNaoAtende() {
+        UUID profissionalId = UUID.randomUUID();
+        UUID clienteId = UUID.randomUUID();
+        when(clinicaContext.profissionalRestrito()).thenReturn(Optional.of(profissionalId));
+        when(clienteRepository.findByIdAndClinica(clienteId, CLINICA))
+                .thenReturn(Optional.of(cliente(clienteId, "Joana", null, "222")));
+        when(atendimentoRepository.existsByCliente_IdAndProfissional_Id(clienteId, profissionalId)).thenReturn(false);
+
+        assertThatThrownBy(() -> clienteService.buscarPorId(CLINICA, clienteId))
+                .isInstanceOf(RecursoNaoEncontradoException.class);
+        assertThatThrownBy(() -> clienteService.criarNota(CLINICA, clienteId, new CreateClienteNotaRequestDTO("x")))
+                .isInstanceOf(RecursoNaoEncontradoException.class);
+    }
+
+    @Test
+    void historicoDoProfissionalTrazSoOsAtendimentosDele() {
+        UUID profissionalId = UUID.randomUUID();
+        UUID clienteId = UUID.randomUUID();
+        com.cliniva.tenancy.Profissional eu = new com.cliniva.tenancy.Profissional();
+        org.springframework.test.util.ReflectionTestUtils.setField(eu, "id", profissionalId);
+        com.cliniva.tenancy.Profissional outro = new com.cliniva.tenancy.Profissional();
+        org.springframework.test.util.ReflectionTestUtils.setField(outro, "id", UUID.randomUUID());
+        Atendimento meu = new Atendimento();
+        org.springframework.test.util.ReflectionTestUtils.setField(meu, "id", UUID.randomUUID());
+        meu.setProfissional(eu);
+        meu.setDataAtendimento(LocalDateTime.of(2026, 9, 1, 10, 0));
+        Atendimento alheio = new Atendimento();
+        org.springframework.test.util.ReflectionTestUtils.setField(alheio, "id", UUID.randomUUID());
+        alheio.setProfissional(outro);
+        alheio.setDataAtendimento(LocalDateTime.of(2026, 9, 2, 10, 0));
+
+        when(clinicaContext.profissionalRestrito()).thenReturn(Optional.of(profissionalId));
+        when(clienteRepository.findByIdAndClinica(clienteId, CLINICA))
+                .thenReturn(Optional.of(cliente(clienteId, "Maria", null, "111")));
+        when(atendimentoRepository.existsByCliente_IdAndProfissional_Id(clienteId, profissionalId)).thenReturn(true);
+        when(atendimentoRepository.findByCliente_Id(clienteId)).thenReturn(List.of(meu, alheio));
+        when(atendimentoService.buscarPorId(CLINICA, meu.getId())).thenReturn(atendimentoDTO(meu.getId(), "Maria",
+                meu.getDataAtendimento(), StatusAtendimento.CONCLUIDO, new BigDecimal("100.00")));
+
+        var historico = clienteService.historicoCliente(CLINICA, clienteId);
+
+        assertThat(historico.atendimentos()).hasSize(1);
+        verify(atendimentoService, never()).buscarPorId(CLINICA, alheio.getId());
     }
 }

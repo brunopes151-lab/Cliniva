@@ -17,6 +17,9 @@ public record AgendaItemDTO(
         Integer duracaoMinutos,
         StatusAtendimento status,
         BigDecimal valorTotal,
-        List<String> servicos) {
+        List<String> servicos,
+        UUID profissionalId,
+        String profissionalNome,
+        String profissionalCor) {
 
 }

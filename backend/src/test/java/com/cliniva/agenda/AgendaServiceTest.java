@@ -3,6 +3,7 @@ package com.cliniva.agenda;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.lenient;
@@ -43,6 +44,7 @@ import com.cliniva.exception.HorarioIndisponivelException;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.ClinicaContext;
 import com.cliniva.tenancy.ClinicaRepository;
 import com.cliniva.tenancy.Profissional;
 import com.cliniva.tenancy.ProfissionalService;
@@ -75,6 +77,8 @@ class AgendaServiceTest {
     private ClinicaRepository clinicaRepository;
     @Mock
     private ProfissionalService profissionalService;
+    @Mock
+    private ClinicaContext clinicaContext;
 
     /** Profissional fallback: desde a migration 08 o expediente é por pessoa. */
     private static final Profissional GERAL = profissional("Geral");
@@ -85,6 +89,7 @@ class AgendaServiceTest {
     @BeforeEach
     void setUpProfissionalGeral() {
         lenient().when(profissionalService.garantirGeral(CLINICA)).thenReturn(GERAL);
+        lenient().when(profissionalService.aptos(eq(CLINICA), any())).thenReturn(List.of(GERAL));
     }
 
     @BeforeEach
@@ -120,10 +125,15 @@ class AgendaServiceTest {
     }
 
     private HorarioAtendimento horario(int dia, String abertura, String fechamento, boolean ativo) {
+        return horario(GERAL, dia, abertura, fechamento, ativo);
+    }
+
+    private HorarioAtendimento horario(Profissional profissional, int dia, String abertura, String fechamento,
+            boolean ativo) {
         HorarioAtendimento h = new HorarioAtendimento();
-        h.setId(new HorarioAtendimentoId(CLINICA.getId(), GERAL.getId(), dia));
+        h.setId(new HorarioAtendimentoId(CLINICA.getId(), profissional.getId(), dia));
         h.setClinica(CLINICA);
-        h.setProfissional(GERAL);
+        h.setProfissional(profissional);
         h.setAbertura(LocalTime.parse(abertura));
         h.setFechamento(LocalTime.parse(fechamento));
         h.setAtivo(ativo);
@@ -131,9 +141,15 @@ class AgendaServiceTest {
     }
 
     private Atendimento atendimento(UUID id, LocalDateTime inicio, int duracao, StatusAtendimento status) {
+        return atendimento(GERAL, id, inicio, duracao, status);
+    }
+
+    private Atendimento atendimento(Profissional profissional, UUID id, LocalDateTime inicio, int duracao,
+            StatusAtendimento status) {
         Atendimento a = new Atendimento();
         ReflectionTestUtils.setField(a, "id", id);
         a.setClinica(CLINICA);
+        a.setProfissional(profissional);
         a.setDataAtendimento(inicio);
         a.setDuracaoMinutos(duracao);
         a.setStatus(status);
@@ -169,7 +185,7 @@ class AgendaServiceTest {
         when(atendimentoServicoRepository.findByAtendimento(tarde))
                 .thenReturn(List.of(atendimentoServico(tarde, massagem)));
 
-        var itens = agendaService.listarDia(CLINICA, SEGUNDA);
+        var itens = agendaService.listarDia(CLINICA, SEGUNDA, null);
 
         assertThat(itens).hasSize(2);
         assertThat(itens.get(0).clienteNome()).isEqualTo("Maria");
@@ -184,11 +200,11 @@ class AgendaServiceTest {
     void deveGerarHorariosLivresDentroDoExpediente() {
         Servico servico = servico("Limpeza", "100.00", 30);
         when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "10:00", true)));
         when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of());
 
-        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID());
+        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID(), null);
 
         assertThat(disponibilidade.horarios()).containsExactly(
                 LocalTime.of(8, 0), LocalTime.of(8, 30), LocalTime.of(9, 0), LocalTime.of(9, 30));
@@ -201,12 +217,12 @@ class AgendaServiceTest {
                 StatusAtendimento.AGENDADO);
 
         when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "10:00", true)));
         when(atendimentoRepository.findPorIntervalo(any(), any(), any()))
                 .thenReturn(List.of(ocupado));
 
-        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID());
+        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID(), null);
 
         assertThat(disponibilidade.horarios()).containsExactly(
                 LocalTime.of(8, 0), LocalTime.of(9, 0), LocalTime.of(9, 30));
@@ -216,9 +232,9 @@ class AgendaServiceTest {
     void deveRetornarListaVaziaQuandoClinicaFechadaNoDia() {
         Servico servico = servico("Limpeza", "100.00", 30);
         when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA)).thenReturn(List.of());
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId())).thenReturn(List.of());
 
-        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID());
+        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID(), null);
 
         assertThat(disponibilidade.horarios()).isEmpty();
     }
@@ -227,11 +243,11 @@ class AgendaServiceTest {
     void disponibilidadeNaoDeveOferecerHorariosNoPassadoNemAlemDaJanela() {
         Servico servico = servico("Limpeza", "100.00", 30);
         when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
 
-        var passado = agendaService.disponibilidadeDia(CLINICA, HOJE.minusDays(3), UUID.randomUUID());
-        var longe = agendaService.disponibilidadeDia(CLINICA, HOJE.plusDays(31), UUID.randomUUID());
+        var passado = agendaService.disponibilidadeDia(CLINICA, HOJE.minusDays(3), UUID.randomUUID(), null);
+        var longe = agendaService.disponibilidadeDia(CLINICA, HOJE.plusDays(31), UUID.randomUUID(), null);
 
         assertThat(passado.horarios()).isEmpty();
         assertThat(longe.horarios()).isEmpty();
@@ -241,104 +257,104 @@ class AgendaServiceTest {
     void naoDeveValidarHorarioQueConflitaComOutroAtendimento() {
         Atendimento ocupado = atendimento(UUID.randomUUID(), SEGUNDA.atTime(9, 0), 30,
                 StatusAtendimento.AGENDADO);
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
         when(atendimentoRepository.findPorIntervalo(any(), any(), any()))
                 .thenReturn(List.of(ocupado));
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(9, 0), 30, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(9, 0), 30, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
                 .hasMessageContaining("ocupado");
     }
 
     @Test
     void naoDeveValidarHorarioForaDoExpediente() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(19, 0), 45, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(19, 0), 45, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
-                .hasMessageContaining("funcionamento");
+                .hasMessageContaining("Fora do horário");
     }
 
     @Test
     void naoDeveValidarQuandoClinicaNaoAbreNoDia() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA)).thenReturn(List.of());
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId())).thenReturn(List.of());
         LocalDate domingo = SEGUNDA.plusDays(6);
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, domingo.atTime(10, 0), 30, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, domingo.atTime(10, 0), 30, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
-                .hasMessageContaining("não abre");
+                .hasMessageContaining("não atende");
     }
 
     @Test
     void naoDeveAceitarDataPassadaNemAlemDaJanelaDeTrintaDias() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
         LocalDate outraSegunda = SEGUNDA.minusWeeks(1);
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, outraSegunda.atTime(10, 0), 30, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, outraSegunda.atTime(10, 0), 30, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
                 .hasMessageContaining("passada");
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, HOJE.plusDays(31).atTime(10, 0), 30, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, HOJE.plusDays(31).atTime(10, 0), 30, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
                 .hasMessageContaining("próximos");
     }
 
     @Test
     void naoDeveAceitarAtendimentoQueAtravessaAMeiaNoite() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "22:00", "23:00", true)));
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(22, 30), 60, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(22, 30), 60, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
-                .hasMessageContaining("funcionamento");
+                .hasMessageContaining("Fora do horário");
     }
 
     @Test
     void naoDeveAceitarDuracaoZeroOuAcimaDoTeto() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(10, 0), 0, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(10, 0), 0, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
                 .hasMessageContaining("Duração");
 
-        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(10, 0), 5000, null))
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(10, 0), 5000, null))
                 .isInstanceOf(HorarioIndisponivelException.class)
                 .hasMessageContaining("Duração");
     }
 
     @Test
     void deveAdquirirLockPessimistaDaClinicaAoValidar() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
         when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of());
 
-        agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(10, 0), 45, null);
+        agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(10, 0), 45, null);
 
         verify(clinicaRepository).findByIdParaUpdate(CLINICA.getId());
     }
 
     @Test
     void devePermitirHorarioLivre() {
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
         when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of());
 
-        agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(10, 0), 45, null);
+        agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(10, 0), 45, null);
     }
 
     @Test
     void deveIgnorarOProprioAtendimentoNaRemarcacao() {
         UUID proprio = UUID.randomUUID();
         Atendimento atual = atendimento(proprio, SEGUNDA.atTime(9, 0), 60, StatusAtendimento.AGENDADO);
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(horario(1, "08:00", "18:00", true)));
         when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(atual));
 
-        agendaService.validarDisponibilidade(CLINICA, SEGUNDA.atTime(9, 0), 60, proprio);
+        agendaService.validarDisponibilidade(CLINICA, GERAL, SEGUNDA.atTime(9, 0), 60, proprio);
     }
 
     @Test
@@ -348,10 +364,10 @@ class AgendaServiceTest {
         when(horarioRepository.findById(idExistente)).thenReturn(Optional.of(existente));
         when(horarioRepository.findById(new HorarioAtendimentoId(CLINICA.getId(), GERAL.getId(), 2)))
                 .thenReturn(Optional.empty());
-        when(horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(CLINICA))
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
                 .thenReturn(List.of(existente));
 
-        agendaService.atualizarHorarios(CLINICA, List.of(
+        agendaService.atualizarHorarios(CLINICA, null, List.of(
                 new HorarioRequestDTO(1, LocalTime.of(9, 0), LocalTime.of(17, 0), true),
                 new HorarioRequestDTO(2, LocalTime.of(8, 0), LocalTime.of(12, 0), true)));
 
@@ -361,7 +377,7 @@ class AgendaServiceTest {
 
     @Test
     void deveRejeitarDiaDuplicadoNaListaDeExpediente() {
-        assertThatThrownBy(() -> agendaService.atualizarHorarios(CLINICA, List.of(
+        assertThatThrownBy(() -> agendaService.atualizarHorarios(CLINICA, null, List.of(
                 new HorarioRequestDTO(1, LocalTime.of(9, 0), LocalTime.of(17, 0), true),
                 new HorarioRequestDTO(1, LocalTime.of(8, 0), LocalTime.of(12, 0), true))))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -384,5 +400,146 @@ class AgendaServiceTest {
         agendaService.semearPadrao(CLINICA);
 
         verify(horarioRepository, times(0)).save(any(HorarioAtendimento.class));
+    }
+
+    // ---------------------------------------------------------------------
+    // Agenda por profissional (Fase 2)
+    // ---------------------------------------------------------------------
+
+    private static final Profissional ANA = profissional("Ana");
+    private static final Profissional BIA = profissional("Bia");
+
+    private void expedienteDeSegunda(Profissional profissional, String abertura, String fechamento) {
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, profissional.getId()))
+                .thenReturn(List.of(horario(profissional, 1, abertura, fechamento, true)));
+    }
+
+    @Test
+    void doisProfissionaisPodemAtenderNoMesmoHorario() {
+        expedienteDeSegunda(ANA, "08:00", "18:00");
+        expedienteDeSegunda(BIA, "08:00", "18:00");
+        Atendimento daAna = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(9, 0), 60, StatusAtendimento.AGENDADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(daAna));
+
+        agendaService.validarDisponibilidade(CLINICA, BIA, SEGUNDA.atTime(9, 0), 60, null);
+
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, ANA, SEGUNDA.atTime(9, 30), 30, null))
+                .isInstanceOf(HorarioIndisponivelException.class)
+                .hasMessageContaining("Ana");
+    }
+
+    @Test
+    void canceladoNaoBloqueiaAgendaDoProfissional() {
+        expedienteDeSegunda(ANA, "08:00", "18:00");
+        Atendimento cancelado = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(9, 0), 60,
+                StatusAtendimento.CANCELADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(cancelado));
+
+        agendaService.validarDisponibilidade(CLINICA, ANA, SEGUNDA.atTime(9, 0), 60, null);
+    }
+
+    @Test
+    void profissionalSemExpedienteNoDiaNaoPodeSerAgendado() {
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, BIA.getId()))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> agendaService.validarDisponibilidade(CLINICA, BIA, SEGUNDA.atTime(9, 0), 30, null))
+                .isInstanceOf(HorarioIndisponivelException.class)
+                .hasMessageContaining("Bia não atende");
+    }
+
+    @Test
+    void disponibilidadeDeUmProfissionalIgnoraAgendaDosOutros() {
+        Servico servico = servico("Drenagem", "100.00", 60);
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(profissionalService.buscar(CLINICA, BIA.getId())).thenReturn(BIA);
+        expedienteDeSegunda(BIA, "08:00", "10:00");
+        Atendimento daAna = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(8, 0), 60, StatusAtendimento.AGENDADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(daAna));
+
+        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID(), BIA.getId());
+
+        assertThat(disponibilidade.horarios()).containsExactly(
+                LocalTime.of(8, 0), LocalTime.of(8, 30), LocalTime.of(9, 0));
+    }
+
+    @Test
+    void semPreferenciaUneOsHorariosDeQuemFazOServico() {
+        Servico servico = servico("Drenagem", "100.00", 60);
+        when(servicoRepository.findByIdAndClinica(any(), any())).thenReturn(Optional.of(servico));
+        when(profissionalService.aptos(eq(CLINICA), any())).thenReturn(List.of(ANA, BIA));
+        expedienteDeSegunda(ANA, "08:00", "09:00");
+        expedienteDeSegunda(BIA, "10:00", "11:00");
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of());
+
+        var disponibilidade = agendaService.disponibilidadeDia(CLINICA, SEGUNDA, UUID.randomUUID(), null);
+
+        assertThat(disponibilidade.horarios()).containsExactly(LocalTime.of(8, 0), LocalTime.of(10, 0));
+    }
+
+    @Test
+    void semPreferenciaEscolheQuemEstaLivre() {
+        Servico servico = servico("Drenagem", "100.00", 60);
+        when(profissionalService.aptos(eq(CLINICA), any())).thenReturn(List.of(ANA, BIA));
+        expedienteDeSegunda(ANA, "08:00", "18:00");
+        expedienteDeSegunda(BIA, "08:00", "18:00");
+        Atendimento daAna = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(9, 0), 60, StatusAtendimento.AGENDADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(daAna));
+
+        Profissional escolhido = agendaService.escolherLivre(CLINICA, List.of(servico), SEGUNDA.atTime(9, 0), 60);
+
+        assertThat(escolhido).isSameAs(BIA);
+    }
+
+    @Test
+    void semPreferenciaSemNinguemLivreRecusa() {
+        Servico servico = servico("Drenagem", "100.00", 60);
+        when(profissionalService.aptos(eq(CLINICA), any())).thenReturn(List.of(ANA));
+        expedienteDeSegunda(ANA, "08:00", "18:00");
+        Atendimento daAna = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(9, 0), 60, StatusAtendimento.AGENDADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(daAna));
+
+        assertThatThrownBy(() -> agendaService.escolherLivre(CLINICA, List.of(servico), SEGUNDA.atTime(9, 0), 60))
+                .isInstanceOf(HorarioIndisponivelException.class)
+                .hasMessageContaining("ocupado");
+    }
+
+    @Test
+    void profissionalLogadoSoVeAPropriaAgenda() {
+        Atendimento daAna = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(9, 0), 60, StatusAtendimento.AGENDADO);
+        Atendimento daBia = atendimento(BIA, UUID.randomUUID(), SEGUNDA.atTime(10, 0), 60, StatusAtendimento.AGENDADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(daAna, daBia));
+        when(clinicaContext.profissionalRestrito()).thenReturn(Optional.of(ANA.getId()));
+
+        // Mesmo pedindo a agenda da Bia, a Ana só recebe a dela.
+        var itens = agendaService.listarDia(CLINICA, SEGUNDA, BIA.getId());
+
+        assertThat(itens).extracting(item -> item.profissionalNome()).containsExactly("Ana");
+    }
+
+    @Test
+    void filtroDeProfissionalNaAgendaDaRecepcao() {
+        Atendimento daAna = atendimento(ANA, UUID.randomUUID(), SEGUNDA.atTime(9, 0), 60, StatusAtendimento.AGENDADO);
+        Atendimento daBia = atendimento(BIA, UUID.randomUUID(), SEGUNDA.atTime(10, 0), 60, StatusAtendimento.AGENDADO);
+        when(atendimentoRepository.findPorIntervalo(any(), any(), any())).thenReturn(List.of(daAna, daBia));
+
+        assertThat(agendaService.listarDia(CLINICA, SEGUNDA, BIA.getId()))
+                .extracting(item -> item.profissionalNome()).containsExactly("Bia");
+        assertThat(agendaService.listarDia(CLINICA, SEGUNDA, null)).hasSize(2);
+    }
+
+    @Test
+    void profissionalNovoRecebeOExpedienteDoGeral() {
+        when(horarioRepository.findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(CLINICA, GERAL.getId()))
+                .thenReturn(List.of(horario(1, "08:00", "18:00", true), horario(2, "09:00", "12:00", false)));
+        when(horarioRepository.existsById(any())).thenReturn(false);
+        when(horarioRepository.findById(any())).thenReturn(Optional.empty());
+
+        agendaService.copiarExpedienteGeral(CLINICA, ANA);
+
+        org.mockito.ArgumentCaptor<HorarioAtendimento> salvo = org.mockito.ArgumentCaptor.forClass(HorarioAtendimento.class);
+        verify(horarioRepository, times(2)).save(salvo.capture());
+        assertThat(salvo.getAllValues()).allMatch(h -> h.getProfissional() == ANA);
+        assertThat(salvo.getAllValues().get(1).isAtivo()).isFalse();
     }
 }

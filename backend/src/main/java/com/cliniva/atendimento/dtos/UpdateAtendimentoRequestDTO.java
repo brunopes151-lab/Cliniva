@@ -10,6 +10,9 @@ public record UpdateAtendimentoRequestDTO(
                 UUID clienteId,
 
                 @NotNull(message = "Data do atendimento é obrigatória")
-                LocalDateTime dataAtendimento) {
+                LocalDateTime dataAtendimento,
+
+                /** Opcional: null mantém o profissional atual. */
+                UUID profissionalId) {
 
 }

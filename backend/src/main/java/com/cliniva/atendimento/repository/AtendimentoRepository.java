@@ -35,6 +35,14 @@ public interface AtendimentoRepository
 
     boolean existsByCliente_Id(UUID clienteId);
 
+    boolean existsByCliente_IdAndProfissional_Id(UUID clienteId, UUID profissionalId);
+
+    /** Pacientes que já tiveram (ou têm marcado) atendimento com o profissional. */
+    @Query("SELECT DISTINCT a.cliente.id FROM Atendimento a WHERE a.clinica = :clinica "
+            + "AND a.profissional.id = :profissionalId")
+    List<UUID> clienteIdsDoProfissional(@Param("clinica") Clinica clinica,
+            @Param("profissionalId") UUID profissionalId);
+
     @Query("SELECT a.clinica.id, COUNT(a) FROM Atendimento a GROUP BY a.clinica.id")
     List<Object[]> contarPorClinica();
 

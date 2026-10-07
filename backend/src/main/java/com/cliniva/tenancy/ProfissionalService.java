@@ -1,20 +1,20 @@
 package com.cliniva.tenancy;
 
-import java.time.Clock;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.cliniva.exception.RecursoNaoEncontradoException;
+import com.cliniva.servico.Servico;
+
 import lombok.RequiredArgsConstructor;
 
 /**
- * Profissionais que atendem na clínica.
- *
- * <p>Por enquanto só o que o onboarding precisa: garantir o profissional
- * "Geral" e expor a listagem. O CRUD completo (criar, editar, ativar,
- * vincular serviço) é o bloco seguinte.
+ * Consultas e regras sobre quem atende. O cadastro (criar, editar,
+ * especialidades, serviços) fica em {@code equipe.EquipeService}.
  */
 @Service
 @RequiredArgsConstructor
@@ -24,7 +24,6 @@ public class ProfissionalService {
     public static final String NOME_GERAL = "Geral";
 
     private final ProfissionalRepository profissionalRepository;
-    private final Clock clock;
 
     /**
      * Devolve o profissional "Geral" da clínica, criando se ainda não existir.
@@ -57,9 +56,37 @@ public class ProfissionalService {
 
     @Transactional(readOnly = true)
     public Profissional buscar(Clinica clinica, UUID id) {
-        return profissionalRepository.findById(id)
-                .filter(p -> p.getClinica().getId().equals(clinica.getId()))
-                .orElseThrow(() -> new com.cliniva.exception.RecursoNaoEncontradoException(
-                        "Profissional não encontrado"));
+        return profissionalRepository.findByIdAndClinica_Id(id, clinica.getId())
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Profissional não encontrado"));
+    }
+
+    /** Profissionais ativos que executam TODOS os serviços informados, em ordem de nome. */
+    @Transactional(readOnly = true)
+    public List<Profissional> aptos(Clinica clinica, Collection<Servico> servicos) {
+        return profissionalRepository.findByClinica_IdAndAtivoTrueOrderByNomeAsc(clinica.getId()).stream()
+                .filter(profissional -> executaTodos(profissional, servicos))
+                .toList();
+    }
+
+    /** Recusa (400) um profissional inativo ou que não faz algum dos serviços. */
+    public void exigirApto(Profissional profissional, Collection<Servico> servicos) {
+        if (!profissional.isAtivo()) {
+            throw new IllegalArgumentException("Profissional " + profissional.getNome() + " está inativo");
+        }
+        for (Servico servico : servicos) {
+            if (!executa(profissional, servico)) {
+                throw new IllegalArgumentException(
+                        profissional.getNome() + " não realiza o serviço " + servico.getNome());
+            }
+        }
+    }
+
+    private boolean executaTodos(Profissional profissional, Collection<Servico> servicos) {
+        return servicos.stream().allMatch(servico -> executa(profissional, servico));
+    }
+
+    private boolean executa(Profissional profissional, Servico servico) {
+        List<UUID> vinculados = profissionalRepository.idsVinculadosAoServico(servico.getId());
+        return vinculados.isEmpty() || vinculados.contains(profissional.getId());
     }
 }

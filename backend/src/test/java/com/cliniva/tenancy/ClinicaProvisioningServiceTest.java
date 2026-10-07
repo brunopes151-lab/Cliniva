@@ -26,6 +26,8 @@ class ClinicaProvisioningServiceTest {
     private ClinicaRepository clinicaRepository;
     @Mock
     private AgendaService agendaService;
+    @Mock
+    private EspecialidadeRepository especialidadeRepository;
 
     @InjectMocks
     private ClinicaProvisioningService provisioning;
@@ -41,6 +43,8 @@ class ClinicaProvisioningServiceTest {
         assertThat(clinica.getNome()).isEqualTo("Clínica Ação");
         assertThat(clinica.getSlug()).isEqualTo("clinica-acao");
         verify(agendaService).semearPadrao(clinica);
+        // Estética e Fisioterapia já vêm cadastradas.
+        verify(especialidadeRepository, org.mockito.Mockito.times(2)).save(any(Especialidade.class));
     }
 
     @Test

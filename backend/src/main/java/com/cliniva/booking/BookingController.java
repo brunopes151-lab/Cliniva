@@ -19,6 +19,7 @@ import com.cliniva.agenda.dtos.DisponibilidadeDiaDTO;
 import com.cliniva.booking.dtos.BookingRequestDTO;
 import com.cliniva.booking.dtos.BookingResponseDTO;
 import com.cliniva.booking.dtos.ServicoPublicoDTO;
+import com.cliniva.tenancy.dtos.EquipeDtos.ProfissionalPublicoDTO;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -37,12 +38,19 @@ public class BookingController {
         return bookingService.listarServicos(slug);
     }
 
+    @GetMapping("/{slug}/profissionais")
+    public List<ProfissionalPublicoDTO> listarProfissionais(@PathVariable String slug,
+            @RequestParam UUID servicoId) {
+        return bookingService.listarProfissionais(slug, servicoId);
+    }
+
     @GetMapping("/{slug}/disponibilidade")
     public DisponibilidadeDiaDTO disponibilidadeDia(
             @PathVariable String slug,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
-            @RequestParam UUID servicoId) {
-        return bookingService.disponibilidade(slug, data, servicoId);
+            @RequestParam UUID servicoId,
+            @RequestParam(required = false) UUID profissionalId) {
+        return bookingService.disponibilidade(slug, data, servicoId, profissionalId);
     }
 
     @PostMapping("/{slug}")

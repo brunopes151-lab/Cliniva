@@ -3,6 +3,8 @@ package com.cliniva.atendimento;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,7 +49,11 @@ import com.cliniva.item.Item;
 import com.cliniva.item.ItemRepository;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
+import com.cliniva.exception.AcessoNaoPermitidoException;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.ClinicaContext;
+import com.cliniva.tenancy.Profissional;
+import com.cliniva.tenancy.ProfissionalService;
 
 @ExtendWith(MockitoExtension.class)
 class AtendimentoServiceTest {
@@ -76,6 +82,28 @@ class AtendimentoServiceTest {
         private ItemRepository itemRepository;
         @Mock
         private AgendaService agendaService;
+        @Mock
+        private ProfissionalService profissionalService;
+        @Mock
+        private ClinicaContext clinicaContext;
+
+        private static final UUID PROFISSIONAL_ID = UUID.randomUUID();
+        private static final Profissional ANA = profissional(PROFISSIONAL_ID, "Ana");
+
+        private static Profissional profissional(UUID id, String nome) {
+                Profissional profissional = new Profissional();
+                profissional.setClinica(CLINICA);
+                profissional.setNome(nome);
+                profissional.setAtivo(true);
+                ReflectionTestUtils.setField(profissional, "id", id);
+                return profissional;
+        }
+
+        @org.junit.jupiter.api.BeforeEach
+        void setUpProfissional() {
+                org.mockito.Mockito.lenient().when(profissionalService.buscar(CLINICA, PROFISSIONAL_ID))
+                                .thenReturn(ANA);
+        }
 
         @InjectMocks
         private AtendimentoService atendimentoService;
@@ -116,6 +144,7 @@ class AtendimentoServiceTest {
         private Atendimento atendimentoComStatus(StatusAtendimento status) {
                 Atendimento atendimento = new Atendimento();
                 atendimento.setClinica(CLINICA);
+                atendimento.setProfissional(ANA);
                 atendimento.setCliente(cliente(CLIENTE_ID, "Maria"));
                 atendimento.setDataAtendimento(LocalDateTime.now().plusDays(1));
                 atendimento.setStatus(status);
@@ -144,7 +173,7 @@ class AtendimentoServiceTest {
                 return new CreateAtendimentoRequestDTO(
                                 CLIENTE_ID,
                                 LocalDateTime.now().plusDays(1),
-                                List.of(new ServicoSelecionadoDTO(SERVICO_ID, List.of(itens))));
+                                List.of(new ServicoSelecionadoDTO(SERVICO_ID, List.of(itens))), PROFISSIONAL_ID);
         }
 
         /**
@@ -167,7 +196,7 @@ class AtendimentoServiceTest {
                 var requisicao = new CreateAtendimentoRequestDTO(
                                 CLIENTE_ID,
                                 LocalDateTime.now().plusDays(1),
-                                List.of(new ServicoSelecionadoDTO(SERVICO_ID, null)));
+                                List.of(new ServicoSelecionadoDTO(SERVICO_ID, null)), PROFISSIONAL_ID);
 
                 var resposta = atendimentoService.createAtendimento(CLINICA, requisicao);
 
@@ -278,7 +307,7 @@ class AtendimentoServiceTest {
                                 LocalDateTime.now().plusDays(1),
                                 List.of(
                                                 new ServicoSelecionadoDTO(SERVICO_ID, List.of()),
-                                                new ServicoSelecionadoDTO(SERVICO_ID, List.of())));
+                                                new ServicoSelecionadoDTO(SERVICO_ID, List.of())), PROFISSIONAL_ID);
 
                 assertThatThrownBy(() -> atendimentoService.createAtendimento(CLINICA, requisicao))
                                 .isInstanceOf(RecursoDuplicadoException.class);
@@ -405,7 +434,7 @@ class AtendimentoServiceTest {
                                 .thenReturn(Optional.of(cliente(novoClienteId, "Joana")));
 
                 atendimentoService.atualizarAtendimento(CLINICA, ATENDIMENTO_ID,
-                                new com.cliniva.atendimento.dtos.UpdateAtendimentoRequestDTO(novoClienteId, novaData));
+                                new com.cliniva.atendimento.dtos.UpdateAtendimentoRequestDTO(novoClienteId, novaData, null));
 
                 assertThat(atendimento.getDataAtendimento()).isEqualTo(novaData);
                 assertThat(atendimento.getCliente().getNome()).isEqualTo("Joana");
@@ -420,7 +449,7 @@ class AtendimentoServiceTest {
 
                 assertThatThrownBy(() -> atendimentoService.atualizarAtendimento(CLINICA, ATENDIMENTO_ID,
                                 new com.cliniva.atendimento.dtos.UpdateAtendimentoRequestDTO(CLIENTE_ID,
-                                                LocalDateTime.now())))
+                                                LocalDateTime.now(), null)))
                                 .isInstanceOf(TransicaoStatusInvalidaException.class)
                                 .hasMessageContaining("AGENDADO");
         }
@@ -436,7 +465,7 @@ class AtendimentoServiceTest {
 
                 assertThatThrownBy(() -> atendimentoService.atualizarAtendimento(CLINICA, ATENDIMENTO_ID,
                                 new com.cliniva.atendimento.dtos.UpdateAtendimentoRequestDTO(inexistente,
-                                                LocalDateTime.now())))
+                                                LocalDateTime.now(), null)))
                                 .isInstanceOf(RecursoNaoEncontradoException.class);
         }
 
@@ -458,7 +487,7 @@ class AtendimentoServiceTest {
                                 .thenReturn(List.of(atendimentoServico(segundo, "25.00")));
 
                 var lista = atendimentoService.listarAtendimentos(
-                                CLINICA, StatusAtendimento.AGENDADO, null, null, null);
+                                CLINICA, StatusAtendimento.AGENDADO, null, null, null, null);
 
                 assertThat(lista).hasSize(2);
                 assertThat(lista.get(0).nomeCliente()).isEqualTo("Maria");
@@ -499,5 +528,73 @@ class AtendimentoServiceTest {
 
                 assertThatThrownBy(() -> atendimentoService.buscarPorId(CLINICA, ATENDIMENTO_ID))
                                 .isInstanceOf(RecursoNaoEncontradoException.class);
+        }
+
+        // ---------- profissional (Fase 2) ----------
+
+        @Test
+        void criacaoConfereAAgendaDoProfissionalEscolhido() {
+                Servico servico = servico("150.00");
+                when(clienteRepository.findByIdAndClinica(CLIENTE_ID, CLINICA))
+                                .thenReturn(Optional.of(cliente(CLIENTE_ID, "Maria")));
+                when(servicoRepository.findByIdAndClinica(SERVICO_ID, CLINICA)).thenReturn(Optional.of(servico));
+                when(atendimentoRepository.save(any(Atendimento.class)))
+                                .thenAnswer(invocacao -> invocacao.getArgument(0));
+                when(atendimentoServicoRepository.save(any(AtendimentoServico.class)))
+                                .thenAnswer(invocacao -> invocacao.getArgument(0));
+
+                var resposta = atendimentoService.createAtendimento(CLINICA, requisicaoComUmServicoEItens());
+
+                verify(profissionalService).exigirApto(ANA, List.of(servico));
+                verify(agendaService).validarDisponibilidade(eq(CLINICA), eq(ANA), any(), eq(30), isNull());
+                assertThat(resposta.profissionalNome()).isEqualTo("Ana");
+        }
+
+        @Test
+        void profissionalLogadoNaoAgendaNaAgendaDeOutro() {
+                when(clinicaContext.profissionalRestrito()).thenReturn(Optional.of(UUID.randomUUID()));
+                when(clienteRepository.findByIdAndClinica(CLIENTE_ID, CLINICA))
+                                .thenReturn(Optional.of(cliente(CLIENTE_ID, "Maria")));
+                when(servicoRepository.findByIdAndClinica(SERVICO_ID, CLINICA)).thenReturn(Optional.of(servico("100.00")));
+
+                assertThatThrownBy(() -> atendimentoService.createAtendimento(CLINICA, requisicaoComUmServicoEItens()))
+                                .isInstanceOf(AcessoNaoPermitidoException.class);
+                verify(atendimentoRepository, never()).save(any());
+        }
+
+        @Test
+        void profissionalLogadoNaoVeAtendimentoDeOutro() {
+                when(clinicaContext.profissionalRestrito()).thenReturn(Optional.of(UUID.randomUUID()));
+                when(atendimentoRepository.findByIdAndClinica(ATENDIMENTO_ID, CLINICA))
+                                .thenReturn(Optional.of(atendimentoComStatus(StatusAtendimento.AGENDADO)));
+
+                assertThatThrownBy(() -> atendimentoService.buscarPorId(CLINICA, ATENDIMENTO_ID))
+                                .isInstanceOf(RecursoNaoEncontradoException.class);
+                assertThatThrownBy(() -> atendimentoService.alterarStatus(CLINICA, ATENDIMENTO_ID,
+                                StatusAtendimento.CONCLUIDO))
+                                .isInstanceOf(RecursoNaoEncontradoException.class);
+        }
+
+        @Test
+        void remarcarParaOutroProfissionalConfereSeEleFazOServico() {
+                Atendimento atendimento = atendimentoComStatus(StatusAtendimento.AGENDADO);
+                UUID biaId = UUID.randomUUID();
+                Profissional bia = profissional(biaId, "Bia");
+                AtendimentoServico feito = atendimentoServico(atendimento, "100.00");
+                when(atendimentoRepository.findByIdAndClinica(ATENDIMENTO_ID, CLINICA))
+                                .thenReturn(Optional.of(atendimento));
+                when(clienteRepository.findByIdAndClinica(CLIENTE_ID, CLINICA))
+                                .thenReturn(Optional.of(cliente(CLIENTE_ID, "Maria")));
+                when(profissionalService.buscar(CLINICA, biaId)).thenReturn(bia);
+                when(atendimentoServicoRepository.findByAtendimento(atendimento)).thenReturn(List.of(feito));
+
+                atendimentoService.atualizarAtendimento(CLINICA, ATENDIMENTO_ID,
+                                new com.cliniva.atendimento.dtos.UpdateAtendimentoRequestDTO(CLIENTE_ID,
+                                                atendimento.getDataAtendimento(), biaId));
+
+                verify(profissionalService).exigirApto(bia, List.of(feito.getServico()));
+                verify(agendaService).validarDisponibilidade(eq(CLINICA), eq(bia), any(), any(Integer.class),
+                                eq(ATENDIMENTO_ID));
+                assertThat(atendimento.getProfissional()).isSameAs(bia);
         }
 }

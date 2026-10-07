@@ -9,6 +9,7 @@ public record BookingResponseDTO(
         Integer duracaoMinutos,
         String servico,
         String clinica,
-        String cliente) {
+        String cliente,
+        String profissional) {
 
 }

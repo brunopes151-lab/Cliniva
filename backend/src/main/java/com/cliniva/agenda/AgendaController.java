@@ -37,9 +37,10 @@ public class AgendaController {
 
     @GetMapping
     public List<AgendaItemDTO> listarDia(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
+            @RequestParam(required = false) UUID profissionalId) {
         Clinica clinica = clinicaContext.obterClinicaAtual();
-        return agendaService.listarDia(clinica, data);
+        return agendaService.listarDia(clinica, data, profissionalId);
     }
 
     @GetMapping("/link")
@@ -51,22 +52,24 @@ public class AgendaController {
     @GetMapping("/disponibilidade")
     public DisponibilidadeDiaDTO disponibilidadeDia(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
-            @RequestParam UUID servicoId) {
+            @RequestParam UUID servicoId,
+            @RequestParam(required = false) UUID profissionalId) {
         Clinica clinica = clinicaContext.obterClinicaAtual();
-        return agendaService.disponibilidadeDia(clinica, data, servicoId);
+        return agendaService.disponibilidadeDia(clinica, data, servicoId, profissionalId);
     }
 
     @GetMapping("/horarios")
-    public List<HorarioResponseDTO> listarHorarios() {
+    public List<HorarioResponseDTO> listarHorarios(@RequestParam(required = false) UUID profissionalId) {
         Clinica clinica = clinicaContext.obterClinicaAtual();
-        return agendaService.listarHorarios(clinica);
+        return agendaService.listarHorarios(clinica, profissionalId);
     }
 
     @PutMapping("/horarios")
     @ResponseStatus(HttpStatus.OK)
     public List<HorarioResponseDTO> atualizarHorarios(
-            @Valid @RequestBody @NotEmpty @Size(max = 7) List<@Valid HorarioRequestDTO> horarios) {
+            @Valid @RequestBody @NotEmpty @Size(max = 7) List<@Valid HorarioRequestDTO> horarios,
+            @RequestParam(required = false) UUID profissionalId) {
         Clinica clinica = clinicaContext.obterClinicaAtual();
-        return agendaService.atualizarHorarios(clinica, horarios);
+        return agendaService.atualizarHorarios(clinica, profissionalId, horarios);
     }
 }

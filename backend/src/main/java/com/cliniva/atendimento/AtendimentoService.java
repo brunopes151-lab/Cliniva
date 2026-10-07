@@ -39,7 +39,11 @@ import com.cliniva.item.Item;
 import com.cliniva.item.ItemRepository;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
+import com.cliniva.exception.AcessoNaoPermitidoException;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.ClinicaContext;
+import com.cliniva.tenancy.Profissional;
+import com.cliniva.tenancy.ProfissionalService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -53,6 +57,8 @@ public class AtendimentoService {
         private final ServicoRepository servicoRepository;
         private final ItemRepository itemRepository;
         private final AgendaService agendaService;
+        private final ProfissionalService profissionalService;
+        private final ClinicaContext clinicaContext;
         private final Clock clock;
 
         @Transactional
@@ -80,14 +86,20 @@ public class AtendimentoService {
                         throw new TransicaoStatusInvalidaException("A soma das durações dos serviços excede "
                                         + AgendaService.DURACAO_MAXIMA_MINUTOS + " minutos");
                 }
+                Profissional profissional = profissionalPermitido(clinica, requestDTO.profissionalId());
+                profissionalService.exigirApto(profissional, servicos);
+
                 // validarDisponibilidade adquire o lock pessimista da clínica,
                 // garantindo check + insert atômicos (evita double booking e
-                // estoque negativo em agendamentos simultâneos).
-                agendaService.validarDisponibilidade(clinica, requestDTO.dataAtendimento(), duracaoTotal, null);
+                // estoque negativo em agendamentos simultâneos). O conflito
+                // é checado só na agenda deste profissional.
+                agendaService.validarDisponibilidade(clinica, profissional, requestDTO.dataAtendimento(),
+                                duracaoTotal, null);
 
                 Atendimento atendimento = new Atendimento();
                 atendimento.setClinica(clinica);
                 atendimento.setCliente(cliente);
+                atendimento.setProfissional(profissional);
                 atendimento.setDataAtendimento(requestDTO.dataAtendimento());
                 atendimento.setDuracaoMinutos(duracaoTotal);
                 atendimento.setStatus(StatusAtendimento.AGENDADO);
@@ -165,13 +177,14 @@ public class AtendimentoService {
                                 atendimento.getDataCriacao(),
                                 atendimento.getDuracaoMinutos(),
                                 atendimento.getStatus(),
-                                servicosRealizados);
+                                servicosRealizados,
+                                profissional.getId(),
+                                profissional.getNome());
         }
 
         @Transactional
         public AtendimentoResponseDTO alterarStatus(Clinica clinica, UUID id, StatusAtendimento novoStatus) {
-                Atendimento atendimento = atendimentoRepository.findByIdAndClinica(id, clinica)
-                                .orElseThrow(() -> new RecursoNaoEncontradoException("Atendimento não encontrado"));
+                Atendimento atendimento = buscarVisivel(clinica, id);
 
                 // CANCELADO é o único estado terminal
                 if (atendimento.getStatus() == StatusAtendimento.CANCELADO) {
@@ -198,8 +211,7 @@ public class AtendimentoService {
         @Transactional
         public AtendimentoResponseDTO atualizarAtendimento(Clinica clinica, UUID id,
                         UpdateAtendimentoRequestDTO requestDTO) {
-                Atendimento atendimento = atendimentoRepository.findByIdAndClinica(id, clinica)
-                                .orElseThrow(() -> new RecursoNaoEncontradoException("Atendimento não encontrado"));
+                Atendimento atendimento = buscarVisivel(clinica, id);
 
                 if (atendimento.getStatus() != StatusAtendimento.AGENDADO) {
                         throw new TransicaoStatusInvalidaException(
@@ -209,9 +221,20 @@ public class AtendimentoService {
                 Cliente cliente = clienteRepository.findByIdAndClinica(requestDTO.clienteId(), clinica)
                                 .orElseThrow(() -> new RecursoNaoEncontradoException("Cliente não encontrado"));
 
-                agendaService.validarDisponibilidade(clinica, requestDTO.dataAtendimento(),
+                Profissional profissional = atendimento.getProfissional();
+                if (requestDTO.profissionalId() != null
+                                && !requestDTO.profissionalId().equals(profissional.getId())) {
+                        profissional = profissionalPermitido(clinica, requestDTO.profissionalId());
+                        List<Servico> servicos = atendimentoServicoRepository.findByAtendimento(atendimento).stream()
+                                        .map(AtendimentoServico::getServico)
+                                        .toList();
+                        profissionalService.exigirApto(profissional, servicos);
+                }
+
+                agendaService.validarDisponibilidade(clinica, profissional, requestDTO.dataAtendimento(),
                                 atendimento.getDuracaoMinutos(), id);
 
+                atendimento.setProfissional(profissional);
                 atendimento.setCliente(cliente);
                 atendimento.setDataAtendimento(requestDTO.dataAtendimento());
                 atendimentoRepository.save(atendimento);
@@ -235,10 +258,11 @@ public class AtendimentoService {
         @Transactional(readOnly = true)
         public List<AtendimentoResumoResponseDTO> listarAtendimentos(Clinica clinica, StatusAtendimento status,
                         UUID clienteId,
-                        LocalDateTime dataInicio, LocalDateTime dataFim) {
+                        LocalDateTime dataInicio, LocalDateTime dataFim, UUID profissionalId) {
+                UUID filtroProfissional = clinicaContext.profissionalRestrito().orElse(profissionalId);
                 Specification<Atendimento> specification = AtendimentoSpecifications.comFiltros(clinica, status,
                                 clienteId,
-                                dataInicio, dataFim);
+                                dataInicio, dataFim, filtroProfissional);
 
                 return atendimentoRepository.findAll(specification).stream()
                                 .map(this::toResumoResponseDTO)
@@ -247,8 +271,7 @@ public class AtendimentoService {
 
         @Transactional(readOnly = true)
         public AtendimentoResponseDTO buscarPorId(Clinica clinica, UUID id) {
-                Atendimento atendimento = atendimentoRepository.findByIdAndClinica(id, clinica)
-                                .orElseThrow(() -> new RecursoNaoEncontradoException("Atendimento não encontrado"));
+                Atendimento atendimento = buscarVisivel(clinica, id);
 
                 List<AtendimentoResponseDTO.ServicoRealizadoDTO> servicos = atendimentoServicoRepository
                                 .findByAtendimento(atendimento).stream()
@@ -263,7 +286,32 @@ public class AtendimentoService {
                                 atendimento.getDataCriacao(),
                                 atendimento.getStatus(),
                                 calcularValorTotal(atendimento),
-                                servicos);
+                                servicos,
+                                atendimento.getProfissional().getId(),
+                                atendimento.getProfissional().getNome());
+        }
+
+        /**
+         * Atendimento da clínica que o usuário pode ver. Para o PROFISSIONAL,
+         * o de outro profissional responde 404, como se não existisse.
+         */
+        private Atendimento buscarVisivel(Clinica clinica, UUID id) {
+                Atendimento atendimento = atendimentoRepository.findByIdAndClinica(id, clinica)
+                                .orElseThrow(() -> new RecursoNaoEncontradoException("Atendimento não encontrado"));
+                Optional<UUID> restrito = clinicaContext.profissionalRestrito();
+                if (restrito.isPresent() && !restrito.get().equals(atendimento.getProfissional().getId())) {
+                        throw new RecursoNaoEncontradoException("Atendimento não encontrado");
+                }
+                return atendimento;
+        }
+
+        /** O PROFISSIONAL só agenda na própria agenda. */
+        private Profissional profissionalPermitido(Clinica clinica, UUID profissionalId) {
+                Optional<UUID> restrito = clinicaContext.profissionalRestrito();
+                if (restrito.isPresent() && !restrito.get().equals(profissionalId)) {
+                        throw new AcessoNaoPermitidoException("Você só pode agendar na sua própria agenda");
+                }
+                return profissionalService.buscar(clinica, profissionalId);
         }
 
         private AtendimentoResumoResponseDTO toResumoResponseDTO(Atendimento atendimento) {
@@ -274,7 +322,9 @@ public class AtendimentoService {
                                 atendimento.getCliente().getTelefone(),
                                 atendimento.getDataAtendimento(),
                                 atendimento.getStatus(),
-                                calcularValorTotal(atendimento));
+                                calcularValorTotal(atendimento),
+                                atendimento.getProfissional().getId(),
+                                atendimento.getProfissional().getNome());
         }
 
         private AtendimentoResponseDTO.ServicoRealizadoDTO toServicoRealizadoDTO(

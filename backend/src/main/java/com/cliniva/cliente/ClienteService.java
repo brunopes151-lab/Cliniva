@@ -5,7 +5,10 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -29,6 +32,7 @@ import com.cliniva.exception.RecursoDuplicadoException;
 import com.cliniva.exception.RecursoEmUsoException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.ClinicaContext;
 
 import lombok.RequiredArgsConstructor;
 
@@ -40,6 +44,7 @@ public class ClienteService {
     private final ClienteNotaRepository clienteNotaRepository;
     private final AtendimentoRepository atendimentoRepository;
     private final AtendimentoService atendimentoService;
+    private final ClinicaContext clinicaContext;
     private final Clock clock;
 
     @Transactional
@@ -86,14 +91,36 @@ public class ClienteService {
         } else {
             clientes = clienteRepository.findByClinica(clinica);
         }
-        return clientes.stream().map(this::toResponseDTO).toList();
+        return visiveis(clinica, clientes).stream().map(this::toResponseDTO).toList();
     }
 
     @Transactional(readOnly = true)
     public ClienteResponseDTO buscarPorId(Clinica clinica, UUID id) {
+        return toResponseDTO(buscarVisivel(clinica, id));
+    }
+
+    /**
+     * Paciente da clínica que o usuário pode ver. O PROFISSIONAL só vê quem
+     * tem (ou teve) atendimento com ele; os demais respondem 404.
+     */
+    private Cliente buscarVisivel(Clinica clinica, UUID id) {
         Cliente cliente = clienteRepository.findByIdAndClinica(id, clinica)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Cliente não encontrado"));
-        return toResponseDTO(cliente);
+        Optional<UUID> restrito = clinicaContext.profissionalRestrito();
+        if (restrito.isPresent()
+                && !atendimentoRepository.existsByCliente_IdAndProfissional_Id(id, restrito.get())) {
+            throw new RecursoNaoEncontradoException("Cliente não encontrado");
+        }
+        return cliente;
+    }
+
+    private List<Cliente> visiveis(Clinica clinica, List<Cliente> clientes) {
+        Optional<UUID> restrito = clinicaContext.profissionalRestrito();
+        if (restrito.isEmpty()) {
+            return clientes;
+        }
+        Set<UUID> permitidos = new HashSet<>(atendimentoRepository.clienteIdsDoProfissional(clinica, restrito.get()));
+        return clientes.stream().filter(cliente -> permitidos.contains(cliente.getId())).toList();
     }
 
     @Transactional
@@ -158,8 +185,7 @@ public class ClienteService {
 
     @Transactional
     public NotaResponseDTO criarNota(Clinica clinica, UUID clienteId, CreateClienteNotaRequestDTO requestDTO) {
-        Cliente cliente = clienteRepository.findByIdAndClinica(clienteId, clinica)
-                .orElseThrow(() -> new RecursoNaoEncontradoException("Cliente não encontrado"));
+        Cliente cliente = buscarVisivel(clinica, clienteId);
 
         ClienteNota nota = new ClienteNota();
         nota.setCliente(cliente);
@@ -174,6 +200,11 @@ public class ClienteService {
         if (!clienteRepository.existsByIdAndClinica(clienteId, clinica)) {
             throw new RecursoNaoEncontradoException("Cliente não encontrado");
         }
+        Optional<UUID> restrito = clinicaContext.profissionalRestrito();
+        if (restrito.isPresent()
+                && !atendimentoRepository.existsByCliente_IdAndProfissional_Id(clienteId, restrito.get())) {
+            throw new RecursoNaoEncontradoException("Cliente não encontrado");
+        }
         ClienteNota nota = clienteNotaRepository.findById(notaId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Nota não encontrada"));
         if (!nota.getCliente().getId().equals(clienteId)) {
@@ -186,7 +217,11 @@ public class ClienteService {
     public ClienteHistoricoResponseDTO historicoCliente(Clinica clinica, UUID id) {
         ClienteResponseDTO perfil = buscarPorId(clinica, id);
 
+        // O profissional vê só os atendimentos dele com este paciente.
+        Optional<UUID> restrito = clinicaContext.profissionalRestrito();
         List<AtendimentoResponseDTO> atendimentos = atendimentoRepository.findByCliente_Id(id).stream()
+                .filter(atendimento -> restrito.isEmpty()
+                        || restrito.get().equals(atendimento.getProfissional().getId()))
                 .sorted(Comparator.comparing(Atendimento::getDataAtendimento).reversed())
                 .map(atendimento -> atendimentoService.buscarPorId(clinica, atendimento.getId()))
                 .toList();
@@ -224,7 +259,7 @@ public class ClienteService {
         if (mesConsulta < 1 || mesConsulta > 12) {
             throw new IllegalArgumentException("Mês deve estar entre 1 e 12");
         }
-        return clienteRepository.findByDataNascimentoMesAndClinica(mesConsulta, clinica).stream()
+        return visiveis(clinica, clienteRepository.findByDataNascimentoMesAndClinica(mesConsulta, clinica)).stream()
                 .sorted(Comparator.comparing(Cliente::getDataNascimento))
                 .map(this::toResponseDTO)
                 .toList();

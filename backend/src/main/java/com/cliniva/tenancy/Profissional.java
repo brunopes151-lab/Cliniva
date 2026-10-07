@@ -1,8 +1,10 @@
 package com.cliniva.tenancy;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
+
+import com.cliniva.servico.Servico;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,6 +12,8 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
@@ -25,6 +29,11 @@ import lombok.Setter;
  * clínica cadastra a Ana, a Ana nunca entra no sistema — e um usuário com
  * papel OWNER/ADMIN não precisa ser profissional. O vínculo é opcional e
  * fica em {@code usuario.profissional_id}.
+ *
+ * <p>O profissional "Geral" existe em toda clínica: guarda o expediente
+ * padrão (modelo para os profissionais novos) e os atendimentos anteriores
+ * à dimensão profissional. Pode ser desativado quando a clínica cadastrar
+ * a equipe de verdade.
  *
  * <p>Nome único por clínica ({@code uk_profissional_nome}). Apagar quem tem
  * histórico é bloqueado pelo banco ({@code ON DELETE RESTRICT}).
@@ -55,4 +64,24 @@ public class Profissional {
     /** Inativo não aparece em agendamento novo, mas preserva o histórico. */
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
+
+    @ManyToMany
+    @JoinTable(name = "profissional_especialidade",
+            joinColumns = @JoinColumn(name = "profissional_id"),
+            inverseJoinColumns = @JoinColumn(name = "especialidade_id"))
+    private Set<Especialidade> especialidades = new HashSet<>();
+
+    /**
+     * Serviços que este profissional executa. Um serviço sem nenhum
+     * profissional vinculado pode ser feito por qualquer profissional ativo.
+     */
+    @ManyToMany
+    @JoinTable(name = "servico_profissional",
+            joinColumns = @JoinColumn(name = "profissional_id"),
+            inverseJoinColumns = @JoinColumn(name = "servico_id"))
+    private Set<Servico> servicos = new HashSet<>();
+
+    public boolean ehGeral() {
+        return ProfissionalService.NOME_GERAL.equalsIgnoreCase(nome);
+    }
 }

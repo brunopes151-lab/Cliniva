@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -34,9 +35,10 @@ import com.cliniva.exception.RecursoNaoEncontradoException;
 import com.cliniva.servico.Servico;
 import com.cliniva.servico.ServicoRepository;
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.ClinicaContext;
+import com.cliniva.tenancy.ClinicaRepository;
 import com.cliniva.tenancy.Profissional;
 import com.cliniva.tenancy.ProfissionalService;
-import com.cliniva.tenancy.ClinicaRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -58,21 +60,37 @@ public class AgendaService {
     private final HorarioAtendimentoRepository horarioRepository;
     private final ClinicaRepository clinicaRepository;
     private final ProfissionalService profissionalService;
+    private final ClinicaContext clinicaContext;
     private final Clock clock;
 
+    /**
+     * Atendimentos do dia. {@code profissionalId} filtra por quem atende;
+     * um usuário PROFISSIONAL sempre vê só a própria agenda, seja qual for
+     * o filtro pedido.
+     */
     @Transactional(readOnly = true)
-    public List<AgendaItemDTO> listarDia(Clinica clinica, LocalDate data) {
+    public List<AgendaItemDTO> listarDia(Clinica clinica, LocalDate data, UUID profissionalId) {
         LocalDateTime inicio = data.atStartOfDay();
         LocalDateTime fim = data.plusDays(1).atStartOfDay();
+        UUID filtro = clinicaContext.profissionalRestrito().orElse(profissionalId);
 
         return atendimentoRepository.findPorIntervalo(clinica, inicio, fim).stream()
+                .filter(a -> filtro == null || a.getProfissional().getId().equals(filtro))
                 .sorted(Comparator.comparing(Atendimento::getDataAtendimento))
                 .map(this::toAgendaItemDTO)
                 .toList();
     }
 
+    /**
+     * Horários livres no dia para o serviço.
+     *
+     * <p>Com {@code profissionalId}, só os horários daquele profissional.
+     * Sem ele ("sem preferência"), a união dos horários de todos os
+     * profissionais ativos que fazem o serviço.
+     */
     @Transactional(readOnly = true)
-    public DisponibilidadeDiaDTO disponibilidadeDia(Clinica clinica, LocalDate data, UUID servicoId) {
+    public DisponibilidadeDiaDTO disponibilidadeDia(Clinica clinica, LocalDate data, UUID servicoId,
+            UUID profissionalId) {
         Servico servico = servicoRepository.findByIdAndClinica(servicoId, clinica)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Serviço não encontrado"));
 
@@ -84,12 +102,30 @@ public class AgendaService {
             return new DisponibilidadeDiaDTO(data, duracao, List.of());
         }
 
-        Optional<HorarioAtendimento> horario = horarioDoDia(clinica, data);
-        if (horario.isEmpty()) {
-            return new DisponibilidadeDiaDTO(data, duracao, List.of());
+        List<Profissional> candidatos;
+        if (profissionalId != null) {
+            Profissional profissional = profissionalService.buscar(clinica, profissionalId);
+            profissionalService.exigirApto(profissional, List.of(servico));
+            candidatos = List.of(profissional);
+        } else {
+            candidatos = profissionalService.aptos(clinica, List.of(servico));
         }
 
-        List<Atendimento> ocupados = atendimentosBloqueantes(clinica, data, null);
+        Set<LocalTime> livres = new TreeSet<>();
+        for (Profissional profissional : candidatos) {
+            livres.addAll(horariosLivres(clinica, profissional, data, duracao));
+        }
+        return new DisponibilidadeDiaDTO(data, duracao, List.copyOf(livres));
+    }
+
+    private List<LocalTime> horariosLivres(Clinica clinica, Profissional profissional, LocalDate data,
+            int duracao) {
+        Optional<HorarioAtendimento> horario = horarioDoDia(clinica, profissional, data);
+        if (horario.isEmpty()) {
+            return List.of();
+        }
+
+        List<Atendimento> ocupados = atendimentosBloqueantes(clinica, profissional, data, null);
         List<LocalTime> livres = new ArrayList<>();
 
         LocalDateTime abertura = data.atTime(horario.get().getAbertura());
@@ -107,17 +143,46 @@ public class AgendaService {
             }
             candidato = candidato.plusMinutes(PASSO_MINUTOS);
         }
-
-        return new DisponibilidadeDiaDTO(data, duracao, livres);
+        return livres;
     }
 
+    /**
+     * "Sem preferência": o primeiro profissional (por nome) que faz todos os
+     * serviços e está livre no horário. Roda sob o mesmo lock de
+     * {@link #validarDisponibilidade}.
+     */
     @Transactional
-    public void validarDisponibilidade(Clinica clinica, LocalDateTime inicio, int duracaoMinutos,
-            UUID atendimentoExcecaoId) {
+    public Profissional escolherLivre(Clinica clinica, List<Servico> servicos, LocalDateTime inicio,
+            int duracaoMinutos) {
+        List<Profissional> aptos = profissionalService.aptos(clinica, servicos);
+        if (aptos.isEmpty()) {
+            throw new HorarioIndisponivelException("Nenhum profissional realiza este serviço");
+        }
+        HorarioIndisponivelException ultimoMotivo = null;
+        for (Profissional profissional : aptos) {
+            try {
+                validarDisponibilidade(clinica, profissional, inicio, duracaoMinutos, null);
+                return profissional;
+            } catch (HorarioIndisponivelException ex) {
+                ultimoMotivo = ex;
+            }
+        }
+        throw ultimoMotivo;
+    }
+
+    /**
+     * Confere janela, expediente do profissional e conflito com a agenda
+     * DELE. Dois profissionais diferentes podem atender no mesmo horário.
+     */
+    @Transactional
+    public void validarDisponibilidade(Clinica clinica, Profissional profissional, LocalDateTime inicio,
+            int duracaoMinutos, UUID atendimentoExcecaoId) {
         int duracao = duracaoValida(duracaoMinutos);
 
         // Serializa todas as escritas de atendimento desta clínica (create, update e
-        // consumo de estoque) evitando double booking e estoque negativo.
+        // consumo de estoque) evitando double booking e estoque negativo. O
+        // lock continua sendo da clínica (e não do profissional) porque o
+        // estoque é compartilhado.
         clinicaRepository.findByIdParaUpdate(clinica.getId())
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Clínica não encontrada"));
 
@@ -132,9 +197,9 @@ public class AgendaService {
                     "Só é possível agendar entre hoje e os próximos " + JANELA_DIAS + " dias");
         }
 
-        Optional<HorarioAtendimento> horario = horarioDoDia(clinica, data);
+        Optional<HorarioAtendimento> horario = horarioDoDia(clinica, profissional, data);
         if (horario.isEmpty()) {
-            throw new HorarioIndisponivelException("Clínica não abre neste dia");
+            throw new HorarioIndisponivelException(profissional.getNome() + " não atende neste dia");
         }
 
         LocalDateTime abertura = data.atTime(horario.get().getAbertura());
@@ -142,40 +207,43 @@ public class AgendaService {
         LocalDateTime fim = inicio.plusMinutes(duracao);
 
         if (inicio.isBefore(abertura) || fim.isAfter(fechamento)) {
-            throw new HorarioIndisponivelException("Fora do horário de funcionamento");
+            throw new HorarioIndisponivelException("Fora do horário de atendimento de " + profissional.getNome());
         }
 
         if (inicio.isBefore(LocalDateTime.now(clock))) {
             throw new HorarioIndisponivelException("Horário escolhido já passou");
         }
 
-        List<Atendimento> ocupados = atendimentosBloqueantes(clinica, data, atendimentoExcecaoId);
+        List<Atendimento> ocupados = atendimentosBloqueantes(clinica, profissional, data, atendimentoExcecaoId);
         if (estaOcupado(inicio, duracao, ocupados)) {
-            throw new HorarioIndisponivelException("Horário já ocupado");
+            throw new HorarioIndisponivelException("Horário já ocupado na agenda de " + profissional.getNome());
         }
     }
 
+    /**
+     * Expediente de um profissional. Sem {@code profissionalId}, o do
+     * "Geral", que é o expediente padrão da clínica e o modelo copiado para
+     * cada profissional novo.
+     */
     @Transactional(readOnly = true)
-    public List<HorarioResponseDTO> listarHorarios(Clinica clinica) {
-        return horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(clinica).stream()
+    public List<HorarioResponseDTO> listarHorarios(Clinica clinica, UUID profissionalId) {
+        return horariosDe(clinica, profissionalOuGeral(clinica, profissionalId));
+    }
+
+    private List<HorarioResponseDTO> horariosDe(Clinica clinica, Profissional profissional) {
+        return horarioRepository
+                .findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(clinica, profissional.getId()).stream()
                 .map(this::toHorarioResponseDTO)
                 .toList();
     }
 
-    /**
-     * Atualiza o expediente da clínica, hojeodo no profissional "Geral".
-     *
-     * <p>Quando o expediente passar a ser por profissional de verdade, esta
-     * assinatura ganha um {@code profissionalId}. Por enquanto opera no Geral
-     * para o comportamento atual não mudar — é o mesmo profissional que
-     * {@link #semearPadrao} usa.
-     */
     @Transactional
-    public List<HorarioResponseDTO> atualizarHorarios(Clinica clinica, List<HorarioRequestDTO> horarios) {
+    public List<HorarioResponseDTO> atualizarHorarios(Clinica clinica, UUID profissionalId,
+            List<HorarioRequestDTO> horarios) {
         if (horarios == null || horarios.isEmpty() || horarios.size() > 7) {
             throw new IllegalArgumentException("Informe entre 1 e 7 dias de expediente");
         }
-        Profissional geral = profissionalService.garantirGeral(clinica);
+        Profissional profissional = profissionalOuGeral(clinica, profissionalId);
         Set<Integer> dias = new HashSet<>();
         for (HorarioRequestDTO request : horarios) {
             if (request.diaSemana() == null) {
@@ -187,21 +255,47 @@ public class AgendaService {
             if (!request.abertura().isBefore(request.fechamento())) {
                 throw new IllegalArgumentException("Abertura deve ser antes do fechamento");
             }
-            HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(),
-                    geral.getId(), request.diaSemana());
-            HorarioAtendimento horario = horarioRepository.findById(id).orElseGet(() -> {
-                HorarioAtendimento novo = new HorarioAtendimento();
-                novo.setId(id);
-                novo.setClinica(clinica);
-                novo.setProfissional(geral);
-                return novo;
-            });
-            horario.setAbertura(request.abertura());
-            horario.setFechamento(request.fechamento());
-            horario.setAtivo(request.ativoOuPadrao());
-            horarioRepository.save(horario);
+            salvarHorario(clinica, profissional, request.diaSemana(), request.abertura(),
+                    request.fechamento(), request.ativoOuPadrao());
         }
-        return listarHorarios(clinica);
+        return horariosDe(clinica, profissional);
+    }
+
+    /** Profissional novo começa com o mesmo expediente do "Geral". */
+    @Transactional
+    public void copiarExpedienteGeral(Clinica clinica, Profissional novo) {
+        Profissional geral = profissionalService.garantirGeral(clinica);
+        for (HorarioAtendimento modelo : horarioRepository
+                .findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(clinica, geral.getId())) {
+            HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(), novo.getId(),
+                    modelo.getId().getDiaSemana());
+            if (!horarioRepository.existsById(id)) {
+                salvarHorario(clinica, novo, modelo.getId().getDiaSemana(), modelo.getAbertura(),
+                        modelo.getFechamento(), modelo.isAtivo());
+            }
+        }
+    }
+
+    private void salvarHorario(Clinica clinica, Profissional profissional, Integer diaSemana,
+            LocalTime abertura, LocalTime fechamento, boolean ativo) {
+        HorarioAtendimentoId id = new HorarioAtendimentoId(clinica.getId(), profissional.getId(), diaSemana);
+        HorarioAtendimento horario = horarioRepository.findById(id).orElseGet(() -> {
+            HorarioAtendimento novo = new HorarioAtendimento();
+            novo.setId(id);
+            novo.setClinica(clinica);
+            novo.setProfissional(profissional);
+            return novo;
+        });
+        horario.setAbertura(abertura);
+        horario.setFechamento(fechamento);
+        horario.setAtivo(ativo);
+        horarioRepository.save(horario);
+    }
+
+    private Profissional profissionalOuGeral(Clinica clinica, UUID profissionalId) {
+        return profissionalId == null
+                ? profissionalService.garantirGeral(clinica)
+                : profissionalService.buscar(clinica, profissionalId);
     }
 
     /**
@@ -233,23 +327,28 @@ public class AgendaService {
         }
     }
 
-    private Optional<HorarioAtendimento> horarioDoDia(Clinica clinica, LocalDate data) {
-        return horarioRepository.findByClinicaOrderByIdDiaSemanaAsc(clinica).stream()
+    private Optional<HorarioAtendimento> horarioDoDia(Clinica clinica, Profissional profissional,
+            LocalDate data) {
+        return horarioRepository
+                .findByClinicaAndIdProfissionalIdOrderByIdDiaSemanaAsc(clinica, profissional.getId()).stream()
                 .filter(h -> h.isAtivo() && h.getId().getDiaSemana().equals(data.getDayOfWeek().getValue()))
                 .findFirst();
     }
 
     /**
-     * Atendimentos que bloqueiam o dia: mesma clínica, status diferente de
+     * Atendimentos que bloqueiam o dia: mesmo profissional, status diferente de
      * CANCELADO e início na janela [ontem 00:00, amanhã 00:00) — a janela
      * estendida captura atendimentos que começam no dia anterior e terminam no
      * dia corrente. A sobreposição real é checada em memória por intervalo.
      */
-    private List<Atendimento> atendimentosBloqueantes(Clinica clinica, LocalDate data, UUID excecaoId) {
+    private List<Atendimento> atendimentosBloqueantes(Clinica clinica, Profissional profissional,
+            LocalDate data, UUID excecaoId) {
         LocalDateTime inicio = data.minusDays(1).atStartOfDay();
         LocalDateTime fim = data.plusDays(1).atStartOfDay();
         return atendimentoRepository.findPorIntervalo(clinica, inicio, fim).stream()
                 .filter(a -> a.getStatus() != StatusAtendimento.CANCELADO)
+                .filter(a -> a.getProfissional() != null
+                        && a.getProfissional().getId().equals(profissional.getId()))
                 .filter(a -> excecaoId == null || !a.getId().equals(excecaoId))
                 .toList();
     }
@@ -294,7 +393,10 @@ public class AgendaService {
                 atendimento.getDuracaoMinutos(),
                 atendimento.getStatus(),
                 valorTotal,
-                nomes);
+                nomes,
+                atendimento.getProfissional().getId(),
+                atendimento.getProfissional().getNome(),
+                atendimento.getProfissional().getCor());
     }
 
     private HorarioResponseDTO toHorarioResponseDTO(HorarioAtendimento horario) {

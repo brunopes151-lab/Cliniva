@@ -27,6 +27,9 @@ public record BookingRequestDTO(
 
         @Email(message = "E-mail inválido")
         @Size(max = 120, message = "E-mail deve ter no máximo 120 caracteres")
-        String email) {
+        String email,
+
+        /** Opcional: null = sem preferência, o sistema escolhe quem estiver livre. */
+        UUID profissionalId) {
 
 }

@@ -26,6 +26,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import com.cliniva.tenancy.Clinica;
+import com.cliniva.tenancy.Profissional;
 
 @Entity(name = "Atendimento")
 @Table(name = "atendimento")
@@ -52,6 +53,10 @@ public class Atendimento {
     @JoinColumn
     @ManyToOne
     private Cliente cliente;
+    /** Quem atende. Obrigatório desde a migration 20261007000001. */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "profissional_id", nullable = false)
+    private Profissional profissional;
 
     /**
      * Fallback quando o atendimento é criado fora do {@code AtendimentoService}
