@@ -21,6 +21,8 @@ import { ServicosPage } from '@/pages/ServicosPage'
 import { TrocarSenhaPage } from '@/pages/TrocarSenhaPage'
 import { UsuariosPage } from '@/pages/UsuariosPage'
 import { ModelosFichaPage } from '@/pages/ModelosFichaPage'
+import { TermoConsentimentoPage } from '@/pages/TermoConsentimentoPage'
+import { ExportacaoPacientePage } from '@/pages/ExportacaoPacientePage'
 import { cadastroPublicoAtivo } from '@/lib/config'
 
 function App() {
@@ -34,6 +36,17 @@ function App() {
         element={cadastroPublicoAtivo ? <CadastroPage /> : <Navigate to="/login" replace />}
       />
       <Route path="/agendar/:slug" element={<BookingPage />} />
+      {/* Fora do layout para imprimir só o documento. */}
+      <Route
+        path="/clientes/:id/exportacao"
+        element={
+          <RequerAuth>
+            <RequerResponsavel>
+              <ExportacaoPacientePage />
+            </RequerResponsavel>
+          </RequerAuth>
+        }
+      />
       <Route
         element={
           <RequerAuth>
@@ -51,6 +64,7 @@ function App() {
         <Route path="/profissionais" element={<RequerResponsavel><ProfissionaisPage /></RequerResponsavel>} />
         <Route path="/usuarios" element={<RequerResponsavel><UsuariosPage /></RequerResponsavel>} />
         <Route path="/fichas" element={<RequerResponsavel><ModelosFichaPage /></RequerResponsavel>} />
+        <Route path="/termo" element={<RequerResponsavel><TermoConsentimentoPage /></RequerResponsavel>} />
         <Route path="/configuracoes" element={<RequerResponsavel><ConfiguracoesPage /></RequerResponsavel>} />
         <Route path="/admin" element={<RequerAdmin><AdminPage /></RequerAdmin>} />
         <Route path="/trocar-senha" element={<TrocarSenhaPage />} />
