@@ -14,6 +14,8 @@ import { Select } from '@/components/ui/Select'
 import { Spinner } from '@/components/ui/Spinner'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
+import { useAuth } from '@/hooks/useAuth'
+import { ehEquipeAdministrativa } from '@/lib/perfis'
 import type { CanalPreferido, Cliente, ClienteInput, ClienteStatus, OrigemCliente } from '@/types'
 import { fidelidadeCor, fidelidadeLabel } from '@/utils/format'
 
@@ -41,6 +43,9 @@ function contagemConcluidosPorCliente(atendimentos: { clienteId: string; status:
 
 export function ClientesPage() {
   const navigate = useNavigate()
+  const { usuario } = useAuth()
+  // O profissional consulta os próprios pacientes; cadastro é da recepção.
+  const podeEditar = ehEquipeAdministrativa(usuario)
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const { data: clientes, loading, error, refetch } = useApi(
@@ -130,7 +135,7 @@ export function ClientesPage() {
         kicker="Cadastro"
         title="Clientes"
         subtitle="Cadastro, perfil e fidelização dos clientes da clínica"
-        action={<Button onClick={abrirCriar} className="w-full lg:w-auto">Novo cliente</Button>}
+        action={podeEditar ? <Button onClick={abrirCriar} className="w-full lg:w-auto">Novo cliente</Button> : undefined}
       />
 
       <div className="mb-10 grid grid-cols-1 gap-x-12 gap-y-6 border-b border-hairline pb-8 md:grid-cols-2">
@@ -173,7 +178,8 @@ export function ClientesPage() {
                   <span className={`mt-1 block text-[11px] font-medium uppercase tracking-[0.14em] ${fidelidadeCor(total)}`}>
                     {fidelidadeLabel(total)}
                   </span>
-                  <CardActions>
+                  {podeEditar && (
+                    <CardActions>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -195,6 +201,7 @@ export function ClientesPage() {
                       Excluir
                     </Button>
                   </CardActions>
+                  )}
                 </CardItem>
               )
             })}
@@ -207,7 +214,7 @@ export function ClientesPage() {
                   <th className="py-3 pr-8 font-medium">Status</th>
                   <th className="py-3 pr-8 font-medium">Fidelidade</th>
                   <th className="py-3 pr-8 font-medium">E-mail</th>
-                  <th className="py-3 text-right font-medium">Ações</th>
+                  {podeEditar && <th className="py-3 text-right font-medium">Ações</th>}
                 </tr>
               </thead>
             <tbody>
@@ -227,7 +234,8 @@ export function ClientesPage() {
                       {fidelidadeLabel(total)}
                     </td>
                     <td className="py-4 pr-8 text-ink-soft">{cliente.email || '—'}</td>
-                    <td className="py-4 text-right whitespace-nowrap">
+                    {podeEditar && (
+                      <td className="py-4 text-right whitespace-nowrap">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -250,6 +258,7 @@ export function ClientesPage() {
                         Excluir
                       </Button>
                     </td>
+                    )}
                   </tr>
                 )
               })}

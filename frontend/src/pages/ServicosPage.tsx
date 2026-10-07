@@ -10,12 +10,17 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Spinner } from '@/components/ui/Spinner'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
+import { useAuth } from '@/hooks/useAuth'
+import { ehAdministracao } from '@/lib/perfis'
 import type { Servico, ServicoInput } from '@/types'
 import { formatMoeda } from '@/utils/format'
 
 const emptyForm: ServicoInput = { nome: '', descricao: '', valor: 0, duracaoMinutos: 30 }
 
 export function ServicosPage() {
+  const { usuario } = useAuth()
+  // Catálogo e preços são do administrador; os outros perfis só consultam.
+  const podeEditar = ehAdministracao(usuario)
   const { data: servicos, loading, error, refetch } = useApi(() => servicosApi.listar())
 
   const [modalAberto, setModalAberto] = useState(false)
@@ -101,7 +106,7 @@ export function ServicosPage() {
         kicker="Catálogo"
         title="Serviços"
         subtitle="Procedimentos oferecidos pela clínica"
-        action={<Button onClick={abrirCriar} className="w-full lg:w-auto">Novo serviço</Button>}
+        action={podeEditar ? <Button onClick={abrirCriar} className="w-full lg:w-auto">Novo serviço</Button> : undefined}
       />
 
       {error && <ErrorBanner message={error} />}
@@ -120,7 +125,8 @@ export function ServicosPage() {
                 <CardDetail>
                   {servico.duracaoMinutos} min · {formatMoeda(servico.valor)}
                 </CardDetail>
-                <CardActions>
+                {podeEditar && (
+                  <CardActions>
                   <Button variant="ghost" size="sm" onClick={() => abrirEditar(servico)}>
                     Editar
                   </Button>
@@ -128,6 +134,7 @@ export function ServicosPage() {
                     Excluir
                   </Button>
                 </CardActions>
+                )}
               </CardItem>
             ))}
           </CardList>
@@ -139,7 +146,7 @@ export function ServicosPage() {
                   <th className="py-3 pr-8 font-medium">Descrição</th>
                   <th className="py-3 pr-8 font-medium">Duração</th>
                   <th className="py-3 pr-8 font-medium">Valor</th>
-                  <th className="py-3 text-right font-medium">Ações</th>
+                  {podeEditar && <th className="py-3 text-right font-medium">Ações</th>}
                 </tr>
               </thead>
             <tbody>
@@ -158,7 +165,8 @@ export function ServicosPage() {
                   <td className="py-4 pr-8 font-mono text-[13px] text-accent-strong">
                     {formatMoeda(servico.valor)}
                   </td>
-                  <td className="py-4 text-right whitespace-nowrap">
+                  {podeEditar && (
+                    <td className="py-4 text-right whitespace-nowrap">
                     <Button variant="ghost" size="sm" onClick={() => abrirEditar(servico)}>
                       Editar
                     </Button>
@@ -171,6 +179,7 @@ export function ServicosPage() {
                       Excluir
                     </Button>
                   </td>
+                  )}
                 </tr>
               ))}
             </tbody>

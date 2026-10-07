@@ -5,6 +5,8 @@ import { MarcaSimbolo } from '@/components/marca/MarcaSimbolo'
 import { useAuth } from '@/hooks/useAuth'
 import { useMarca } from '@/hooks/useMarca'
 import { useTheme } from '@/hooks/useTheme'
+import { ehAdministracao, ehEquipeAdministrativa, telaInicial } from '@/lib/perfis'
+import { PAPEL_LABEL } from '@/types'
 
 function PageTransition() {
   const location = useLocation()
@@ -22,15 +24,21 @@ export function AppLayout() {
   const navigate = useNavigate()
   const [menuAberto, setMenuAberto] = useState(false)
 
+  const administracao = ehAdministracao(usuario)
+  const equipeAdministrativa = ehEquipeAdministrativa(usuario)
   const navItems = [
-    { to: '/dashboard', label: 'Dashboard', end: true },
+    ...(equipeAdministrativa ? [{ to: '/dashboard', label: 'Dashboard', end: true }] : []),
     { to: '/clientes', label: 'Clientes' },
     { to: '/servicos', label: 'Serviços' },
     { to: '/agenda', label: 'Agenda' },
-    { to: '/estoque', label: 'Estoque' },
+    ...(equipeAdministrativa ? [{ to: '/estoque', label: 'Estoque' }] : []),
     { to: '/atendimentos', label: 'Atendimentos' },
-    ...(usuario?.papel === 'OWNER' || usuario?.papel === 'ADMIN'
-      ? [{ to: '/configuracoes', label: 'Configurações' }]
+    ...(administracao
+      ? [
+          { to: '/profissionais', label: 'Profissionais' },
+          { to: '/usuarios', label: 'Usuários e acessos' },
+          { to: '/configuracoes', label: 'Configurações' },
+        ]
       : []),
     ...(usuario?.papel === 'ADMIN' ? [{ to: '/admin', label: 'Admin' }] : []),
   ]
@@ -82,7 +90,7 @@ export function AppLayout() {
           'lg:translate-x-0',
         ].join(' ')}
       >
-        <NavLink to="/dashboard" end className="flex h-20 items-center gap-3 border-b border-white/10 px-5">
+        <NavLink to={telaInicial(usuario)} end className="flex h-20 items-center gap-3 border-b border-white/10 px-5">
           <MarcaSimbolo marca={marca} />
           <span className="truncate font-display text-2xl text-bone">{marca.nome}</span>
         </NavLink>
@@ -149,6 +157,11 @@ export function AppLayout() {
             {usuario?.papel === 'ADMIN' && (
               <span className="border border-accent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-accent-strong">
                 Admin
+              </span>
+            )}
+            {usuario && usuario.papel !== 'ADMIN' && (
+              <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-ink-soft sm:inline">
+                {PAPEL_LABEL[usuario.papel]}
               </span>
             )}
             <button

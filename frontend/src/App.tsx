@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequerAdmin } from '@/components/auth/RequerAdmin'
 import { RequerAuth } from '@/components/auth/RequerAuth'
-import { RequerResponsavel } from '@/components/auth/RequerResponsavel'
+import { RequerEquipeAdministrativa, RequerResponsavel } from '@/components/auth/RequerResponsavel'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { HomeRouter } from '@/components/layout/HomeRouter'
 import { AdminPage } from '@/pages/AdminPage'
@@ -16,8 +16,10 @@ import { ConfiguracoesPage } from '@/pages/ConfiguracoesPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { EstoquePage } from '@/pages/EstoquePage'
 import { LoginPage } from '@/pages/LoginPage'
+import { ProfissionaisPage } from '@/pages/ProfissionaisPage'
 import { ServicosPage } from '@/pages/ServicosPage'
 import { TrocarSenhaPage } from '@/pages/TrocarSenhaPage'
+import { UsuariosPage } from '@/pages/UsuariosPage'
 import { cadastroPublicoAtivo } from '@/lib/config'
 
 function App() {
@@ -38,13 +40,15 @@ function App() {
           </RequerAuth>
         }
       >
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard" element={<RequerEquipeAdministrativa><DashboardPage /></RequerEquipeAdministrativa>} />
         <Route path="/clientes" element={<ClientesPage />} />
         <Route path="/clientes/:id" element={<ClienteDetalhePage />} />
         <Route path="/servicos" element={<ServicosPage />} />
         <Route path="/agenda" element={<AgendaPage />} />
-        <Route path="/estoque" element={<EstoquePage />} />
+        <Route path="/estoque" element={<RequerEquipeAdministrativa><EstoquePage /></RequerEquipeAdministrativa>} />
         <Route path="/atendimentos" element={<AtendimentosPage />} />
+        <Route path="/profissionais" element={<RequerResponsavel><ProfissionaisPage /></RequerResponsavel>} />
+        <Route path="/usuarios" element={<RequerResponsavel><UsuariosPage /></RequerResponsavel>} />
         <Route path="/configuracoes" element={<RequerResponsavel><ConfiguracoesPage /></RequerResponsavel>} />
         <Route path="/admin" element={<RequerAdmin><AdminPage /></RequerAdmin>} />
         <Route path="/trocar-senha" element={<TrocarSenhaPage />} />
