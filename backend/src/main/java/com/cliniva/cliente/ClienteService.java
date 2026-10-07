@@ -29,6 +29,7 @@ import com.cliniva.cliente.dtos.NotaResponseDTO;
 import com.cliniva.cliente.dtos.UpdateClienteRequestDTO;
 import com.cliniva.cliente.enums.ClienteStatus;
 import com.cliniva.pacote.PacoteClienteRepository;
+import com.cliniva.prontuario.RegistroClinicoRepository;
 import com.cliniva.exception.RecursoDuplicadoException;
 import com.cliniva.exception.RecursoEmUsoException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
@@ -45,6 +46,7 @@ public class ClienteService {
     private final ClienteNotaRepository clienteNotaRepository;
     private final AtendimentoRepository atendimentoRepository;
     private final PacoteClienteRepository pacoteClienteRepository;
+    private final RegistroClinicoRepository registroClinicoRepository;
     private final AtendimentoService atendimentoService;
     private final ClinicaContext clinicaContext;
     private final Clock clock;
@@ -173,6 +175,9 @@ public class ClienteService {
         }
         if (pacoteClienteRepository.existsByCliente_Id(id)) {
             throw new RecursoEmUsoException("Cliente possui pacotes e não pode ser excluído");
+        }
+        if (registroClinicoRepository.existsByCliente_Id(id)) {
+            throw new RecursoEmUsoException("Cliente possui prontuário e não pode ser excluído");
         }
         if (clienteNotaRepository.existsByCliente_Id(id)) {
             throw new RecursoEmUsoException("Cliente possui anotações vinculadas e não pode ser excluído");

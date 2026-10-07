@@ -37,6 +37,7 @@ public class SecurityConfig {
     private static final String[] ADMINISTRACAO = { "ADMIN", "OWNER" };
 
     private static final String[] EQUIPE_ADMINISTRATIVA = { "ADMIN", "OWNER", "RECEPCAO" };
+    private static final String[] EQUIPE_CLINICA = { "ADMIN", "OWNER", "PROFISSIONAL" };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAutenticacaoFilter jwtFiltro)
@@ -69,6 +70,12 @@ public class SecurityConfig {
                         // Configuração da clínica: só o administrador da
                         // clínica (OWNER) e o ADMIN da plataforma.
                         .requestMatchers("/api/usuarios/**").hasAnyRole(ADMINISTRACAO)
+                        // Prontuário: recepção não vê conteúdo clínico. Modelos
+                        // de ficha são editados só pela administração.
+                        .requestMatchers("/api/clientes/*/prontuario/**", "/api/prontuario/**")
+                        .hasAnyRole(EQUIPE_CLINICA)
+                        .requestMatchers(HttpMethod.GET, "/api/fichas/**").hasAnyRole(EQUIPE_CLINICA)
+                        .requestMatchers("/api/fichas/**").hasAnyRole(ADMINISTRACAO)
                         .requestMatchers(HttpMethod.GET, "/api/profissionais/**", "/api/especialidades/**",
                                 "/api/servicos/**", "/api/pacotes/**", "/api/agenda/horarios", "/api/clinica/marca")
                         .authenticated()

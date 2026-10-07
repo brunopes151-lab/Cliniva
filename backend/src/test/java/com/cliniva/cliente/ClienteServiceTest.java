@@ -65,6 +65,9 @@ class ClienteServiceTest {
     private PacoteClienteRepository pacoteClienteRepository;
 
     @Mock
+    private com.cliniva.prontuario.RegistroClinicoRepository registroClinicoRepository;
+
+    @Mock
     private AtendimentoService atendimentoService;
 
     @Mock
