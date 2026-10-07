@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { clientesApi } from '@/api/clientesApi'
+import { lgpdApi } from '@/api/lgpdApi'
+import { AcessosPaciente } from '@/components/lgpd/AcessosPaciente'
+import { ConsentimentoPaciente } from '@/components/lgpd/ConsentimentoPaciente'
+import { ExportarDados } from '@/components/lgpd/ExportarDados'
 import { PacotesDoCliente } from '@/components/pacotes/PacotesDoCliente'
 import { ProntuarioPaciente } from '@/components/prontuario/ProntuarioPaciente'
 import { Button } from '@/components/ui/Button'
@@ -13,7 +17,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TextField } from '@/components/ui/TextField'
 import { useApi } from '@/hooks/useApi'
 import { useAuth } from '@/hooks/useAuth'
-import { ehEquipeAdministrativa, veProntuario } from '@/lib/perfis'
+import { ehAdministracao, ehEquipeAdministrativa, veProntuario } from '@/lib/perfis'
 import {
   canalLabel,
   fidelidadeLabel,
@@ -63,7 +67,14 @@ export function ClienteDetalhePage() {
   const { usuario } = useAuth()
   const [params, setParams] = useSearchParams()
   const comProntuario = veProntuario(usuario)
-  const aba = comProntuario && params.get('aba') === 'prontuario' ? 'prontuario' : 'ficha'
+  const comAcessos = ehAdministracao(usuario)
+  const abaPedida = params.get('aba')
+  const aba =
+    comProntuario && abaPedida === 'prontuario'
+      ? 'prontuario'
+      : comAcessos && abaPedida === 'acessos'
+        ? 'acessos'
+        : 'ficha'
   const { id } = useParams<{ id: string }>()
   const {
     data: historico,
@@ -75,6 +86,13 @@ export function ClienteDetalhePage() {
     error: errorNotas,
     refetch: refetchNotas,
   } = useApi(() => clientesApi.listarNotas(id ?? ''), [id])
+
+  const {
+    data: consentimento,
+    loading: carregandoConsentimento,
+    error: erroConsentimento,
+    refetch: refetchConsentimento,
+  } = useApi(() => lgpdApi.situacao(id ?? ''), [id])
 
   const [novaNota, setNovaNota] = useState('')
   const [notaMensagem, setNotaMensagem] = useState('')
@@ -167,6 +185,7 @@ export function ClienteDetalhePage() {
           {[
             { id: 'ficha', label: 'Ficha' },
             { id: 'prontuario', label: 'Prontuário' },
+            ...(comAcessos ? [{ id: 'acessos', label: 'Acessos' }] : []),
           ].map((t) => (
             <button
               key={t.id}
@@ -183,10 +202,13 @@ export function ClienteDetalhePage() {
         </div>
       )}
 
-      {aba === 'prontuario' ? (
+      {aba === 'acessos' ? (
+        <AcessosPaciente clienteId={cliente.id} />
+      ) : aba === 'prontuario' ? (
         <ProntuarioPaciente
           clienteId={cliente.id}
           podeRegistrar={!!usuario?.profissionalId && usuario.papel !== 'ADMIN' && usuario.papel !== 'RECEPCAO'}
+          semConsentimento={consentimento !== null && !consentimento.vigente}
           atendimentos={historico.atendimentos}
         />
       ) : (
@@ -275,7 +297,15 @@ export function ClienteDetalhePage() {
           </Section>
         </div>
 
-        <div className="lg:mt-0">
+        <div className="order-first grid grid-cols-1 content-start gap-y-14 lg:order-none lg:mt-0">
+          <ConsentimentoPaciente
+            clienteId={cliente.id}
+            situacao={consentimento}
+            loading={carregandoConsentimento}
+            error={erroConsentimento}
+            podeRegistrar={usuario?.papel !== 'ADMIN'}
+            onMudou={refetchConsentimento}
+          />
           <Section title="Perfil">
             <div className="grid grid-cols-1 gap-6">
               <Field label="Telefone" value={<span className="font-mono text-[13px]">{cliente.telefone}</span>} />
@@ -288,6 +318,7 @@ export function ClienteDetalhePage() {
               <Field label="Observações" value={cliente.observacoes || '—'} />
             </div>
           </Section>
+          {usuario?.papel === 'OWNER' && <ExportarDados clienteId={cliente.id} />}
         </div>
       </div>
       </>
