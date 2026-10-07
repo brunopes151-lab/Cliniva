@@ -37,6 +37,7 @@ export function AppLayout() {
       ? [
           { to: '/profissionais', label: 'Profissionais' },
           { to: '/usuarios', label: 'Usuários e acessos' },
+          { to: '/fichas', label: 'Modelos de ficha' },
           { to: '/configuracoes', label: 'Configurações' },
         ]
       : []),

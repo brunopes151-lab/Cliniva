@@ -20,6 +20,7 @@ import { ProfissionaisPage } from '@/pages/ProfissionaisPage'
 import { ServicosPage } from '@/pages/ServicosPage'
 import { TrocarSenhaPage } from '@/pages/TrocarSenhaPage'
 import { UsuariosPage } from '@/pages/UsuariosPage'
+import { ModelosFichaPage } from '@/pages/ModelosFichaPage'
 import { cadastroPublicoAtivo } from '@/lib/config'
 
 function App() {
@@ -49,6 +50,7 @@ function App() {
         <Route path="/atendimentos" element={<AtendimentosPage />} />
         <Route path="/profissionais" element={<RequerResponsavel><ProfissionaisPage /></RequerResponsavel>} />
         <Route path="/usuarios" element={<RequerResponsavel><UsuariosPage /></RequerResponsavel>} />
+        <Route path="/fichas" element={<RequerResponsavel><ModelosFichaPage /></RequerResponsavel>} />
         <Route path="/configuracoes" element={<RequerResponsavel><ConfiguracoesPage /></RequerResponsavel>} />
         <Route path="/admin" element={<RequerAdmin><AdminPage /></RequerAdmin>} />
         <Route path="/trocar-senha" element={<TrocarSenhaPage />} />
