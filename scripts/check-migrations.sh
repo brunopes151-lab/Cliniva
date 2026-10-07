@@ -88,6 +88,10 @@ DECLARE
     modelo_regra uuid := gen_random_uuid();
     registro_regra uuid := gen_random_uuid();
     autor_regra uuid := gen_random_uuid();
+    termo_regra uuid := gen_random_uuid();
+    termo_vizinho uuid := gen_random_uuid();
+    consentimento_regra uuid := gen_random_uuid();
+    sem_cadastro uuid := gen_random_uuid();
     recusou boolean;
 BEGIN
     INSERT INTO clinica (id, nome, slug, ativa, criada_em) VALUES
@@ -244,10 +248,92 @@ BEGIN
     EXCEPTION WHEN raise_exception THEN recusou := true;
     END;
     IF NOT recusou THEN RAISE EXCEPTION 'registro com profissional de outra clinica foi aceito'; END IF;
+
+    -- LGPD: termo publicado não muda; consentimento só se revoga, uma vez;
+    -- auditoria só se insere.
+    INSERT INTO termo_consentimento (id, clinica_id, versao, texto) VALUES
+        (termo_regra, c, 1, 'Termo de teste'), (termo_vizinho, outra, 1, 'Termo da vizinha');
+    INSERT INTO consentimento_paciente (id, clinica_id, cliente_id, termo_id, registrado_por_nome)
+    VALUES (consentimento_regra, c, paciente, termo_regra, 'Recepção');
+    INSERT INTO auditoria_acesso (clinica_id, cliente_id, usuario_nome, papel, acao)
+    VALUES (c, paciente, 'Autor', 'OWNER', 'VER_PRONTUARIO');
+
+    recusou := false;
+    BEGIN
+        UPDATE termo_consentimento SET texto = 'Outro' WHERE id = termo_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'termo publicado foi alterado'; END IF;
+
+    recusou := false;
+    BEGIN
+        DELETE FROM termo_consentimento WHERE id = termo_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'termo publicado foi apagado'; END IF;
+
+    recusou := false;
+    BEGIN
+        UPDATE consentimento_paciente SET aceito_em = now() - interval '1 day' WHERE id = consentimento_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'data do consentimento foi alterada'; END IF;
+
+    recusou := false;
+    BEGIN
+        DELETE FROM consentimento_paciente WHERE id = consentimento_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'consentimento foi apagado'; END IF;
+
+    UPDATE consentimento_paciente SET revogado_em = now(), revogado_por_nome = 'Recepção',
+        motivo_revogacao = 'Pedido do paciente' WHERE id = consentimento_regra;
+    recusou := false;
+    BEGIN
+        UPDATE consentimento_paciente SET motivo_revogacao = 'Outro' WHERE id = consentimento_regra;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'revogacao foi alterada'; END IF;
+
+    recusou := false;
+    BEGIN
+        INSERT INTO consentimento_paciente (clinica_id, cliente_id, termo_id, registrado_por_nome)
+        VALUES (c, paciente, termo_vizinho, 'Recepção');
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'consentimento com termo de outra clinica foi aceito'; END IF;
+
+    recusou := false;
+    BEGIN
+        UPDATE auditoria_acesso SET acao = 'CRIAR_REGISTRO' WHERE cliente_id = paciente;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'auditoria foi alterada'; END IF;
+
+    recusou := false;
+    BEGIN
+        DELETE FROM auditoria_acesso WHERE cliente_id = paciente;
+    EXCEPTION WHEN raise_exception THEN recusou := true;
+    END;
+    IF NOT recusou THEN RAISE EXCEPTION 'auditoria foi apagada'; END IF;
+
+    -- Excluir um paciente sem prontuário leva os consentimentos e deixa a auditoria.
+    INSERT INTO cliente (id, clinica_id, nome, telefone) VALUES (sem_cadastro, c, 'Sai', '5511900000009');
+    INSERT INTO consentimento_paciente (clinica_id, cliente_id, termo_id, registrado_por_nome)
+    VALUES (c, sem_cadastro, termo_regra, 'Recepção');
+    INSERT INTO auditoria_acesso (clinica_id, cliente_id, usuario_nome, papel, acao)
+    VALUES (c, sem_cadastro, 'Autor', 'OWNER', 'EXPORTAR_DADOS');
+    DELETE FROM cliente WHERE id = sem_cadastro;
+    IF EXISTS (SELECT 1 FROM consentimento_paciente WHERE cliente_id = sem_cadastro) THEN
+        RAISE EXCEPTION 'consentimento ficou sem paciente';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM auditoria_acesso WHERE cliente_id = sem_cadastro) THEN
+        RAISE EXCEPTION 'auditoria sumiu com o paciente';
+    END IF;
 END $$;
 ROLLBACK;
 SQL
-echo "    ok: sobreposição por profissional, mesma clínica, perfis, séries, saldo de pacote e prontuário imutável"
+echo "    ok: sobreposição por profissional, mesma clínica, perfis, séries, saldo de pacote, prontuário imutável e LGPD"
 
 echo "==> Buildando a aplicação"
 mkdir -p "$(dirname "$LOG_FILE")"
