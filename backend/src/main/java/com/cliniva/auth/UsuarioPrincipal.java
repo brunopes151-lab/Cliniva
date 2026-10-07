@@ -21,4 +21,9 @@ public record UsuarioPrincipal(
     public boolean ehProfissional() {
         return papel == Papel.PROFISSIONAL;
     }
+
+    /** Nome para registros e trilhas; quem não preencheu o nome aparece pelo e-mail. */
+    public String nomeExibicao() {
+        return nome == null || nome.isBlank() ? email : nome;
+    }
 }

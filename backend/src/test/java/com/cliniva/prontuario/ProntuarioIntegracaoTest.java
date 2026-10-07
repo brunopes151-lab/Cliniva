@@ -99,6 +99,9 @@ class ProntuarioIntegracaoTest {
 
         pacienteDaAna = paciente("Paciente A " + sufixo);
         outroPaciente = paciente("Paciente B " + sufixo);
+        // Registro clínico exige termo aceito (Fase 5); as regras dele estão no LgpdIntegracaoTest.
+        aceitarTermo(pacienteDaAna);
+        aceitarTermo(outroPaciente);
         mockMvc.perform(com(recepcao, post("/api/atendimentos")).contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"clienteId":"%s","dataAtendimento":"%sT09:00:00","profissionalId":"%s",
@@ -294,6 +297,15 @@ class ProntuarioIntegracaoTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(evolucaoJson(modeloId("Evolução da sessão"))))
                 .andExpect(status().isCreated()));
+    }
+
+    private void aceitarTermo(Cliente paciente) throws Exception {
+        String termo = lerJson(mockMvc.perform(com(recepcao, get("/api/lgpd/termo")))
+                .andExpect(status().isOk())).get("id").asText();
+        mockMvc.perform(com(recepcao, post("/api/clientes/" + paciente.getId() + "/consentimentos"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"termoId\":\"" + termo + "\"}"))
+                .andExpect(status().isOk());
     }
 
     private static String evolucaoJson(String modeloId) {

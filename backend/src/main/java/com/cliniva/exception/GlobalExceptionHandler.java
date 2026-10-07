@@ -44,7 +44,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({ RecursoDuplicadoException.class, EstoqueInsuficienteException.class,
-            TransicaoStatusInvalidaException.class, RecursoEmUsoException.class, HorarioIndisponivelException.class })
+            TransicaoStatusInvalidaException.class, RecursoEmUsoException.class, HorarioIndisponivelException.class,
+            ConsentimentoPendenteException.class })
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleConflito(RuntimeException ex) {
         return new ErrorResponse(HttpStatus.CONFLICT.value(), ex.getMessage());
@@ -94,6 +95,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ErrorResponse handleIntegridade(DataIntegrityViolationException ex) {
+        // Só o nome da regra: a mensagem do banco traz a linha com os dados.
+        log.warn("Regra do banco recusou a operação: {}", nomeDaRegra(ex));
         return new ErrorResponse(HttpStatus.CONFLICT.value(),
                 "Não foi possível concluir: já existe um registro conflitante ou um valor ficou inválido.");
     }
@@ -119,5 +122,15 @@ public class GlobalExceptionHandler {
         log.error("Erro não tratado em {} {}", request.getMethod(), request.getRequestURI(), ex);
         return new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "Erro interno inesperado. Tente novamente ou contate o suporte.");
+    }
+
+    private static String nomeDaRegra(DataIntegrityViolationException ex) {
+        for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
+            if (causa instanceof org.hibernate.exception.ConstraintViolationException violacao
+                    && violacao.getConstraintName() != null) {
+                return violacao.getConstraintName();
+            }
+        }
+        return "desconhecida";
     }
 }

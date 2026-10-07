@@ -76,6 +76,11 @@ public class SecurityConfig {
                         .hasAnyRole(EQUIPE_CLINICA)
                         .requestMatchers(HttpMethod.GET, "/api/fichas/**").hasAnyRole(EQUIPE_CLINICA)
                         .requestMatchers("/api/fichas/**").hasAnyRole(ADMINISTRACAO)
+                        // LGPD: termo e aceites são da equipe toda; trilha de
+                        // acessos e exportação, só da administração.
+                        .requestMatchers("/api/clientes/*/auditoria", "/api/clientes/*/exportacao")
+                        .hasAnyRole(ADMINISTRACAO)
+                        .requestMatchers(HttpMethod.POST, "/api/lgpd/termo").hasAnyRole(ADMINISTRACAO)
                         .requestMatchers(HttpMethod.GET, "/api/profissionais/**", "/api/especialidades/**",
                                 "/api/servicos/**", "/api/pacotes/**", "/api/agenda/horarios", "/api/clinica/marca")
                         .authenticated()

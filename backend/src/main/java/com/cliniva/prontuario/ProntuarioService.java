@@ -26,6 +26,10 @@ import com.cliniva.cliente.ClienteRepository;
 import com.cliniva.exception.AcessoNaoPermitidoException;
 import com.cliniva.exception.RecursoDuplicadoException;
 import com.cliniva.exception.RecursoNaoEncontradoException;
+import com.cliniva.lgpd.AcaoAuditoria;
+import com.cliniva.lgpd.AuditoriaService;
+import com.cliniva.lgpd.ConsentimentoService;
+import com.cliniva.lgpd.dtos.LgpdDtos.RegistroCompletoDTO;
 import com.cliniva.prontuario.dtos.ProntuarioDtos.CorrecaoRequestDTO;
 import com.cliniva.prontuario.dtos.ProntuarioDtos.ModeloFichaDTO;
 import com.cliniva.prontuario.dtos.ProntuarioDtos.NovoRegistroRequestDTO;
@@ -49,6 +53,9 @@ import lombok.RequiredArgsConstructor;
  * clínico. Quem escreve: só quem tem cadastro de profissional, e corrigir é
  * só do profissional que fez o registro. Nada se apaga: corrigir grava uma
  * versão nova com o motivo.
+ *
+ * <p>LGPD: toda leitura e escrita fica na auditoria (inclusive do ADMIN em
+ * suporte), e registro novo exige termo de consentimento vigente.
  */
 @Service
 @RequiredArgsConstructor
@@ -65,6 +72,8 @@ public class ProntuarioService {
     private final ProfissionalRepository profissionalRepository;
     private final UsuarioRepository usuarioRepository;
     private final ClinicaContext clinicaContext;
+    private final AuditoriaService auditoria;
+    private final ConsentimentoService consentimentos;
     private final Clock clock;
 
     // ---------------------------------------------------------------- modelos
@@ -109,9 +118,10 @@ public class ProntuarioService {
 
     // ------------------------------------------------------------- prontuário
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RegistroDTO> listar(Clinica clinica, UUID clienteId) {
         Cliente cliente = pacienteLegivel(clinica, clienteId);
+        auditoria.registrar(clinica, cliente.getId(), null, AcaoAuditoria.VER_PRONTUARIO);
         List<RegistroClinico> registros = registroRepository
                 .findByClinica_IdAndCliente_IdOrderByCriadoEmDesc(clinica.getId(), cliente.getId());
         if (registros.isEmpty()) {
@@ -126,9 +136,10 @@ public class ProntuarioService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<VersaoDTO> historico(Clinica clinica, UUID registroId) {
         RegistroClinico registro = registroLegivel(clinica, registroId);
+        auditoria.registrar(clinica, registro.getCliente().getId(), registro.getId(), AcaoAuditoria.VER_HISTORICO);
         return versaoRepository.findByRegistro_IdOrderByNumeroDesc(registro.getId()).stream()
                 .map(ProntuarioService::toDto)
                 .toList();
@@ -138,6 +149,7 @@ public class ProntuarioService {
     public RegistroDTO registrar(Clinica clinica, UUID clienteId, NovoRegistroRequestDTO request) {
         UsuarioPrincipal autor = autorClinico();
         Cliente cliente = pacienteLegivel(clinica, clienteId);
+        consentimentos.exigirVigente(cliente);
         Profissional profissional = profissionalRepository.findByIdAndClinica_Id(autor.profissionalId(), clinica.getId())
                 .orElseThrow(() -> new AcessoNaoPermitidoException("Seu acesso não está ligado a um profissional"));
 
@@ -166,6 +178,7 @@ public class ProntuarioService {
         registroRepository.save(registro);
 
         RegistroClinicoVersao versao = gravarVersao(clinica, registro, 1, modelo, request.conteudo(), null, autor);
+        auditoria.registrar(clinica, cliente.getId(), registro.getId(), AcaoAuditoria.CRIAR_REGISTRO);
         return toDto(registro, List.of(versao));
     }
 
@@ -183,7 +196,33 @@ public class ProntuarioService {
         RegistroClinicoVersao nova = gravarVersao(clinica, registro, ultima.getNumero() + 1, ultima.getModelo(),
                 request.conteudo(), request.motivo().trim(), autor);
         versoes.add(0, nova);
+        auditoria.registrar(clinica, registro.getCliente().getId(), registro.getId(),
+                AcaoAuditoria.CORRIGIR_REGISTRO);
         return toDto(registro, versoes);
+    }
+
+    /**
+     * Prontuário inteiro, com todas as versões, para a exportação a pedido do
+     * paciente. Quem chama confere a permissão e audita a exportação.
+     */
+    @Transactional(readOnly = true)
+    public List<RegistroCompletoDTO> exportar(Clinica clinica, UUID clienteId) {
+        List<RegistroClinico> registros = registroRepository
+                .findByClinica_IdAndCliente_IdOrderByCriadoEmDesc(clinica.getId(), clienteId);
+        if (registros.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, List<RegistroClinicoVersao>> versoes = versaoRepository
+                .findByRegistro_IdInOrderByNumeroDesc(registros.stream().map(RegistroClinico::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(v -> v.getRegistro().getId()));
+        return registros.stream()
+                .map(r -> {
+                    List<RegistroClinicoVersao> doRegistro = versoes.getOrDefault(r.getId(), List.of());
+                    return new RegistroCompletoDTO(toDto(r, doRegistro),
+                            doRegistro.stream().map(ProntuarioService::toDto).toList());
+                })
+                .toList();
     }
 
     // ------------------------------------------------------------ permissões
@@ -233,7 +272,7 @@ public class ProntuarioService {
         versao.setModelo(modelo);
         versao.setConteudo(validarConteudo(modelo, conteudo));
         versao.setAutor(usuarioRepository.getReferenceById(autor.id()));
-        versao.setAutorNome(autor.nome());
+        versao.setAutorNome(autor.nomeExibicao());
         versao.setMotivo(motivo);
         versao.setCriadoEm(LocalDateTime.now(clock));
         return versaoRepository.save(versao);
